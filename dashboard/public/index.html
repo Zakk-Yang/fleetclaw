@@ -624,6 +624,18 @@ function firstMeaningfulLine(text) {
   return lines.find((line) => !line.startsWith('SUPERVISOR_DECISION:') && !line.startsWith('[') && !line.startsWith('#')) || lines[0] || '';
 }
 
+function lastMeaningfulLine(text) {
+  if (!text) return '';
+  const lines = String(text).split('\n').map((line) => line.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.startsWith('SUPERVISOR_DECISION:') && !line.startsWith('#')) {
+      return line;
+    }
+  }
+  return lines[lines.length - 1] || '';
+}
+
 function renderDecisionSummary(decision) {
   if (!decision) return 'No recorded supervisor instruction yet.';
   const detail = firstMeaningfulLine(decision.text);
@@ -1004,7 +1016,7 @@ function renderSummary(projectData, agents, supervisor, metrics) {
     title: 'Supervisor',
     meta: `${projectData.supervisor.model} · every ${projectData.supervisor.checkInterval}m`,
     state: 'monitoring',
-    summary: firstMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.',
+    summary: lastMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.',
     context: renderSessionSummary(supervisor.mainSession),
     decisionTitle: 'Role',
     decisionBody: 'Reviews checkpoints, inspects git state, and routes the next decision.',
