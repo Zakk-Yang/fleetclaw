@@ -1,0 +1,61 @@
+# ============================================================
+# FLEETCLAW PROJECT SCOPE
+# Copy this file to project-scope.yaml and customize it.
+#
+# Place the fleetclaw/ folder inside your project directory:
+#   my-project/
+#     fleetclaw/
+#       project-scope.yaml   <-- this file
+#       setup.sh
+#       launch.sh
+#       dashboard/
+#     src/                    <-- your project code
+# ============================================================
+
+project:
+  name: "my-project"               # Project name (used for profile, slugs, etc.)
+  repo: "."                        # "." means use parent directory as project root
+  branch: "main"                   # Base branch name
+  description: |
+    Describe your project here. This is shared with all agents as context.
+
+supervisor:
+  model: "openai-codex/gpt-5.4"   # Model for the supervisor agent
+  thinking: "xhigh"               # Thinking level: off|minimal|low|medium|high|xhigh
+  check_interval_mins: 5          # How often the supervisor checks agent progress
+  context_compact_threshold: 70   # % context usage before triggering compaction
+  stall_timeout_mins: 20          # Minutes without progress = stalled
+  review_checkpoint_mins: 20      # Force checkpoint review after N minutes
+  max_commits_without_decision: 3 # Force checkpoint after N commits
+  notify_channel: ""              # Optional: slack, discord, telegram, etc.
+  notify_target: ""               # Optional: channel/user to notify
+  morning_report_hour: ""         # Optional: hour (0-23) for daily summary
+  morning_report_tz: "UTC"
+
+agents:
+  - id: "developer"               # Unique agent ID (lowercase, no spaces)
+    model: "openai-codex/gpt-5.4"
+    thinking: "xhigh"
+    task: |
+      Describe the agent's task here. Be specific about what to build,
+      what technologies to use, and what the output should look like.
+    focus_dirs:
+      - "src/"                     # Directories this agent is allowed to modify
+
+  # Add more agents as needed:
+  # - id: "backend-dev"
+  #   model: "openai-codex/gpt-5.4"
+  #   thinking: "xhigh"
+  #   task: |
+  #     Build the REST API...
+  #   focus_dirs:
+  #     - "api/"
+  #     - "db/"
+
+advanced:
+  worktree_base: ""                # Override worktree location (default: ~/.openclaw/projects/<name>)
+  openclaw_profile: ""             # Override OpenClaw profile name (default: slugified project name)
+  gateway_port: ""                 # Override gateway port (default: auto-derived)
+  default_agent_model: "openai-codex/gpt-5.4"
+  shared_files:
+    - "PROJECT.md"
