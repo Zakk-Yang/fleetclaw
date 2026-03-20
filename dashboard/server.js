@@ -214,11 +214,14 @@ app.get('/api/agent/:id/file/:filename', (req, res) => {
   if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
 
   const { id, filename } = req.params;
+  if (!/^[a-zA-Z0-9._-]+$/.test(id)) return res.status(400).json({ error: 'Invalid agent id' });
   const allowed = ['STATUS.md', 'BRIEF.md', 'PLAN.md', 'MEMORY.md', 'SOUL.md', 'PROJECT.md', 'BLOCKERS.md'];
   if (!allowed.includes(filename)) return res.status(400).json({ error: 'File not allowed' });
 
   const projectRoot = resolveProjectRoot(scope);
-  const filePath = path.join(projectRoot, '.fleetclaw', 'agents', id, filename);
+  const agentsDir = path.join(projectRoot, '.fleetclaw', 'agents');
+  const filePath = path.resolve(agentsDir, id, filename);
+  if (!filePath.startsWith(agentsDir + path.sep)) return res.status(400).json({ error: 'Invalid path' });
   const content = readMdFile(filePath);
   if (content === null) return res.status(404).json({ error: 'File not found' });
   res.type('text/plain').send(content);
