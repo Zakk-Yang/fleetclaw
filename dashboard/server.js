@@ -236,7 +236,8 @@ app.get('/api/files', (req, res) => {
 });
 
 const PORT = parseInt(process.env.PORT || '3333', 10);
-app.listen(PORT, () => {
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
   const scope = loadScope();
   const projectRoot = scope ? resolveProjectRoot(scope) : 'unknown';
   console.log(`FleetClaw Dashboard running at http://localhost:${PORT}`);
