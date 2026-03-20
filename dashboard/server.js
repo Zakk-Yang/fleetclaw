@@ -406,6 +406,31 @@ function parseStatusFields(status) {
   return fields;
 }
 
+function formatDashboardTimestamp(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+}
+
+function resolveStatusLastUpdatedDisplay(statusFields, statusFilePath) {
+  const rawValue = statusFields?.['last updated'] || '';
+  const parsedRaw = parseTimestamp(rawValue);
+  const parsedMtime = parseTimestamp(getFileMtime(statusFilePath));
+  const nowMs = Date.now();
+  // Keep a small skew allowance, but reject minute-rounded future timestamps.
+  const toleranceMs = 5 * 1000;
+
+  if (parsedRaw) {
+    const rawMs = parsedRaw.getTime();
+    const aheadOfNow = rawMs > nowMs + toleranceMs;
+    const aheadOfFile = parsedMtime ? rawMs > parsedMtime.getTime() + toleranceMs : false;
+    if (!aheadOfNow && !aheadOfFile) {
+      return rawValue;
+    }
+  }
+
+  return formatDashboardTimestamp(parsedMtime) || rawValue || '-';
+}
+
 function uniqueExistingPaths(paths) {
   const seen = new Set();
   return paths.filter((filePath) => {
@@ -621,11 +646,13 @@ function buildDashboardPayload() {
   const agents = (scope.agents || []).map((agent) => {
     const agentDir = path.join(fleetclawDir, agent.id);
     const runtimeId = `${projectSlug}-${agent.id}`;
-    const status = readMdFile(path.join(agentDir, 'STATUS.md'));
+    const statusPath = path.join(agentDir, 'STATUS.md');
+    const status = readMdFile(statusPath);
     const brief = readMdFile(path.join(agentDir, 'BRIEF.md'));
     const plan = readMdFile(path.join(agentDir, 'PLAN.md'));
     const memory = readMdFile(path.join(agentDir, 'MEMORY.md'));
     const soul = readMdFile(path.join(agentDir, 'SOUL.md'));
+    const statusFields = parseStatusFields(status);
 
     return {
       id: agent.id,
@@ -635,7 +662,8 @@ function buildDashboardPayload() {
       focusDirs: agent.focus_dirs || [],
       task: agent.task || '',
       sessionUrl: gateway.port ? `/openclaw/agent/${encodeURIComponent(agent.id)}` : null,
-      statusFields: parseStatusFields(status),
+      statusFields,
+      lastUpdatedDisplay: resolveStatusLastUpdatedDisplay(statusFields, statusPath),
       latestSupervisorDecision: findLatestSupervisorDecision(profile, runtimeId, supervisorRuntimeId),
       instructionBudget: {
         startup: markdownByRole.get(`${agent.id}:startup`) || null,

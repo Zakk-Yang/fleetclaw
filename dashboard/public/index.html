@@ -841,7 +841,7 @@ function renderAgentSection(agent) {
                 <div class="field-list">
                   <div class="field-row"><span class="field-label">Tests</span><span class="field-value">${esc(agent.statusFields.tests || '-')}</span></div>
                   <div class="field-row"><span class="field-label">Decision needed</span><span class="field-value">${esc(agent.statusFields['needs supervisor decision'] || 'no')}</span></div>
-                  <div class="field-row"><span class="field-label">Last updated</span><span class="field-value">${esc(agent.statusFields['last updated'] || '-')}</span></div>
+                  <div class="field-row"><span class="field-label">Last updated</span><span class="field-value">${esc(agent.lastUpdatedDisplay || '-')}</span></div>
                 </div>
               </div>
             </div>
@@ -1025,7 +1025,7 @@ function renderSummary(projectData, agents, supervisor, metrics) {
   for (const agent of agents) {
     laneCards.push(renderLaneCard({
       title: agent.id,
-      meta: `${agent.focusDirs.join(', ') || 'shared workspace'} · ${agent.statusFields['last updated'] || 'no checkpoint'}`,
+      meta: `${agent.focusDirs.join(', ') || 'shared workspace'} · ${agent.lastUpdatedDisplay || 'no checkpoint'}`,
       state: agent.statusFields.state || 'unknown',
       summary: agent.statusFields.summary || 'No summary yet.',
       context: renderSessionSummary(agent.mainSession),

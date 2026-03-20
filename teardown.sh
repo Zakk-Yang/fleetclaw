@@ -52,7 +52,12 @@ RECONCILE_PID_FILE="${SCRIPT_DIR}/generated/reconcile.pid"
 
 stop_dashboard_if_running() {
     local pid=""
-    pid="$(current_project_dashboard_pid "${DASHBOARD_URL}" "${OPENCLAW_PROFILE}" "${DASHBOARD_PORT}")"
+    if [[ -f "${DASHBOARD_PID_FILE}" ]]; then
+        pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
+    fi
+    if [[ -z "${pid}" ]]; then
+        pid="$(current_project_dashboard_pid "${DASHBOARD_URL}" "${OPENCLAW_PROFILE}" "${DASHBOARD_PORT}")"
+    fi
 
     if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
         kill "${pid}" >/dev/null 2>&1 || true
