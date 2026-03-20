@@ -6,9 +6,26 @@ const { execSync } = require('child_process');
 
 const app = express();
 const SCRIPT_DIR = path.resolve(__dirname, '..');
-const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
 const SCOPE_FILE = path.join(SCRIPT_DIR, 'project-scope.yaml');
-const FLEETCLAW_DIR = path.join(PROJECT_ROOT, '.fleetclaw', 'agents');
+
+// Resolve project root from scope (same logic as setup.sh)
+function resolveProjectRoot(scope) {
+  const repo = scope?.project?.repo || '.';
+  if (!repo || repo === 'null' || repo === '.') {
+    return path.resolve(SCRIPT_DIR, '..');
+  }
+  const expanded = repo.startsWith('~') ? repo.replace('~', process.env.HOME) : repo;
+  return path.isAbsolute(expanded) ? expanded : path.resolve(SCRIPT_DIR, expanded);
+}
+
+function resolveWorktreeBase(scope) {
+  const base = scope?.advanced?.worktree_base;
+  if (base && base !== 'null') {
+    const expanded = base.startsWith('~') ? base.replace('~', process.env.HOME) : base;
+    return path.isAbsolute(expanded) ? expanded : path.resolve(SCRIPT_DIR, expanded);
+  }
+  return path.join(process.env.HOME, '.openclaw', 'projects', scope.project.name);
+}
 
 // --- Auto-discover project details from project-scope.yaml ---
 
@@ -45,15 +62,15 @@ function readMdFile(filePath) {
   try { return fs.readFileSync(filePath, 'utf8'); } catch { return null; }
 }
 
-function getGitInfo() {
+function getGitInfo(projectRoot) {
   try {
-    const log = execSync('git log --oneline -10', { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 5000 });
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 5000 }).trim();
+    const log = execSync('git log --oneline -10', { cwd: projectRoot, encoding: 'utf8', timeout: 5000 });
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot, encoding: 'utf8', timeout: 5000 }).trim();
 
     // Get changed files with stat and per-file timestamps
-    const diffNames = execSync('git diff --name-only', { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 5000 }).trim();
-    const untrackedRaw = execSync('git ls-files --others --exclude-standard', { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 5000 }).trim();
-    const diffStat = execSync('git diff --stat', { cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 5000 }).trim();
+    const diffNames = execSync('git diff --name-only', { cwd: projectRoot, encoding: 'utf8', timeout: 5000 }).trim();
+    const untrackedRaw = execSync('git ls-files --others --exclude-standard', { cwd: projectRoot, encoding: 'utf8', timeout: 5000 }).trim();
+    const diffStat = execSync('git diff --stat', { cwd: projectRoot, encoding: 'utf8', timeout: 5000 }).trim();
 
     const changedFiles = [];
     const allFiles = [...(diffNames ? diffNames.split('\n') : []), ...(untrackedRaw ? untrackedRaw.split('\n') : [])];
@@ -61,7 +78,7 @@ function getGitInfo() {
     for (const f of allFiles) {
       if (!f || seen.has(f)) continue;
       seen.add(f);
-      const fullPath = path.join(PROJECT_ROOT, f);
+      const fullPath = path.join(projectRoot, f);
       let mtime = null;
       try { mtime = fs.statSync(fullPath).mtime.toISOString(); } catch {}
       const isUntracked = untrackedRaw.split('\n').includes(f);
@@ -89,8 +106,9 @@ app.get('/api/project', (req, res) => {
   if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
 
   const profile = resolveProfile(scope);
+  const projectRoot = resolveProjectRoot(scope);
   const gatewayConfig = resolveGatewayConfig(profile);
-  const git = getGitInfo();
+  const git = getGitInfo(projectRoot);
 
   const port = gatewayConfig?.gateway?.port || scope.advanced?.gateway_port || null;
   const token = gatewayConfig?.gateway?.auth?.token || null;
@@ -120,12 +138,15 @@ app.get('/api/agents', (req, res) => {
   if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
 
   const profile = resolveProfile(scope);
+  const projectRoot = resolveProjectRoot(scope);
+  const worktreeBase = resolveWorktreeBase(scope);
   const gatewayConfig = resolveGatewayConfig(profile);
   const port = gatewayConfig?.gateway?.port || null;
   const projectSlug = slugify(scope.project.name);
+  const fleetclawDir = path.join(projectRoot, '.fleetclaw', 'agents');
 
   const agents = (scope.agents || []).map(agent => {
-    const agentDir = path.join(FLEETCLAW_DIR, agent.id);
+    const agentDir = path.join(fleetclawDir, agent.id);
     const runtimeId = `${projectSlug}-${agent.id}`;
 
     const status = readMdFile(path.join(agentDir, 'STATUS.md'));
@@ -163,7 +184,7 @@ app.get('/api/agents', (req, res) => {
   });
 
   // Also gather supervisor info
-  const supervisorWs = path.join(process.env.HOME, '.openclaw', 'projects', scope.project.name, 'supervisor-workspace');
+  const supervisorWs = path.join(worktreeBase, 'supervisor-workspace');
   const supervisorRuntimeId = `${projectSlug}-supervisor`;
   const supervisorStatus = readMdFile(path.join(supervisorWs, 'STATUS.md'));
   const supervisorRoster = readMdFile(path.join(supervisorWs, 'ROSTER.md'));
@@ -189,21 +210,26 @@ app.get('/api/agents', (req, res) => {
 });
 
 app.get('/api/agent/:id/file/:filename', (req, res) => {
+  const scope = loadScope();
+  if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
+
   const { id, filename } = req.params;
   const allowed = ['STATUS.md', 'BRIEF.md', 'PLAN.md', 'MEMORY.md', 'SOUL.md', 'PROJECT.md', 'BLOCKERS.md'];
   if (!allowed.includes(filename)) return res.status(400).json({ error: 'File not allowed' });
 
-  const filePath = path.join(FLEETCLAW_DIR, id, filename);
+  const projectRoot = resolveProjectRoot(scope);
+  const filePath = path.join(projectRoot, '.fleetclaw', 'agents', id, filename);
   const content = readMdFile(filePath);
   if (content === null) return res.status(404).json({ error: 'File not found' });
   res.type('text/plain').send(content);
 });
 
 app.get('/api/files', (req, res) => {
-  // List project files (non-hidden, non-node_modules)
+  const scope = loadScope();
+  const projectRoot = scope ? resolveProjectRoot(scope) : path.resolve(SCRIPT_DIR, '..');
   try {
     const output = execSync('find . -maxdepth 3 -not -path "*/node_modules/*" -not -path "*/.git/*" -not -name ".*" -type f | sort', {
-      cwd: PROJECT_ROOT, encoding: 'utf8', timeout: 5000
+      cwd: projectRoot, encoding: 'utf8', timeout: 5000
     });
     res.json({ files: output.trim().split('\n').filter(Boolean) });
   } catch { res.json({ files: [] }); }
@@ -211,7 +237,9 @@ app.get('/api/files', (req, res) => {
 
 const PORT = parseInt(process.env.PORT || '3333', 10);
 app.listen(PORT, () => {
+  const scope = loadScope();
+  const projectRoot = scope ? resolveProjectRoot(scope) : 'unknown';
   console.log(`FleetClaw Dashboard running at http://localhost:${PORT}`);
-  console.log(`Project root: ${PROJECT_ROOT}`);
+  console.log(`Project root: ${projectRoot}`);
   console.log(`Scope file: ${SCOPE_FILE}`);
 });

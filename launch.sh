@@ -175,7 +175,44 @@ if [[ -z "${WORKTREE_BASE}" || "${WORKTREE_BASE}" == "null" ]]; then
     WORKTREE_BASE="$HOME/.openclaw/projects/${PROJECT_NAME}"
 fi
 
+PROJECT_REPO=$(yval '.project.repo')
 SUPERVISOR_THINKING=$(yval_default '.supervisor.thinking' '')
+
+# --- Resolve project root (same logic as setup.sh) ---
+expand_path() {
+    local raw_path="$1"
+    if [[ "${raw_path}" == "~" || "${raw_path}" == ~/* ]]; then
+        printf '%s\n' "${raw_path/#\~/$HOME}"
+    else
+        printf '%s\n' "${raw_path}"
+    fi
+}
+
+resolve_project_root() {
+    local repo_source="$1"
+    if [[ -z "${repo_source}" || "${repo_source}" == "null" || "${repo_source}" == "." ]]; then
+        repo_source="${SCRIPT_DIR}"
+    fi
+    repo_source="$(expand_path "${repo_source}")"
+    if [[ "${repo_source}" != /* ]]; then
+        repo_source="${SCRIPT_DIR}/${repo_source}"
+    fi
+    if [[ "${repo_source}" == "${SCRIPT_DIR}" ]]; then
+        local parent_dir
+        parent_dir="$(dirname "${SCRIPT_DIR}")"
+        if [[ -d "${parent_dir}" ]]; then
+            printf '%s\n' "${parent_dir}"
+            return 0
+        fi
+    fi
+    if [[ -d "${repo_source}" ]]; then
+        printf '%s\n' "${repo_source}"
+        return 0
+    fi
+    return 1
+}
+
+PROJECT_ROOT="$(resolve_project_root "${PROJECT_REPO}")"
 
 # Derive gateway port (same logic as setup.sh)
 CONFIGURED_PORT=$(yval_default '.advanced.gateway_port' '')
@@ -247,7 +284,7 @@ echo ""
 
 # --- Step 3: Ensure project root is a git repo ---
 echo "--- Step 3: Git Bootstrap ---"
-PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+info "Project root: ${PROJECT_ROOT}"
 if ! git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree &>/dev/null; then
     git -C "${PROJECT_ROOT}" init -q
     git -C "${PROJECT_ROOT}" add -A 2>/dev/null || true
