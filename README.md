@@ -4,17 +4,37 @@ Multi-agent framework built on [OpenClaw](https://openclaw.ai). Deploys a superv
 
 ## How It Works
 
-```
-Supervisor (every 5 min)          Coding Agent (heartbeat every 2 min)
-  |                                  |
-  |-- reads STATUS.md ------------->  |-- reads SOUL.md, BRIEF.md
-  |-- checks git diff               |-- works in focus_dirs/
-  |-- sends CONTINUE/REDIRECT/STOP  |-- commits with [agent-id] prefix
-  |                                  |-- updates STATUS.md at checkpoints
-  |-- ACCEPT_DONE when satisfied     |-- requests supervisor decision when needed
+FleetClaw runs one supervisor and one or more coding agents against the same project workspace.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Supervisor
+    participant W as Shared Project Workspace
+    participant A as Coding Agent
+    participant F as .fleetclaw/agents/<id>
+
+    Note over A,F: Agent loop
+    A->>F: Read SOUL.md, BRIEF.md, STATUS.md
+    A->>W: Edit files in focus_dirs
+    A->>W: Commit progress when appropriate
+    A->>F: Update STATUS.md checkpoint
+    A-->>S: Request decision when blocked, done, or review-ready
+
+    Note over S,F: Supervisor loop
+    S->>F: Read STATUS.md
+    S->>W: Review shared git diff and recent changes
+    S-->>A: CONTINUE / REDIRECT / STOP / ACCEPT_DONE / ESCALATE
 ```
 
-Agents work directly in your project directory. No worktrees, no sync step. Files appear immediately.
+**Key points**
+
+- Agents edit the real project files directly in the shared project root
+- There are no per-agent git worktrees and no merge-back step
+- Each agent keeps its instructions and checkpoint files in `.fleetclaw/agents/<id>/`
+- The supervisor wakes on a schedule, reviews checkpoints plus git state, and sends the next decision
+
+Heartbeat keeps agent sessions alive between checks, and supervisor cron jobs trigger regular review cycles.
 
 ## Quick Start
 
