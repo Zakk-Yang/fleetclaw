@@ -285,7 +285,7 @@ resolve_local_repo_path() {
     # If the resolved path IS the fleetclaw directory (a subdirectory of the
     # actual project), prefer the parent directory as the project repo.
     # This way agent worktrees are checkouts of the project, and focus_dirs
-    # like "sentiment-dashboard/" resolve relative to the project root.
+    # like focus_dirs resolve relative to the project root.
     if [[ "${repo_source}" == "${SCRIPT_DIR}" ]]; then
         local parent_dir
         parent_dir="$(dirname "${SCRIPT_DIR}")"
