@@ -79,6 +79,13 @@ Relative `*_file` paths resolve from the `fleetclaw/` directory.
 ```bash
 ./setup.sh    # Creates agent configs, OpenClaw profile, cron jobs
 ./launch.sh   # Starts gateway, dashboard, heartbeat, agent sessions, and opens the dashboard tab
+./teardown.sh # Stops dashboard/reconciler, disables heartbeat, removes cron jobs
+```
+
+For a full runtime-state wipe without deleting your project files:
+
+```bash
+./teardown.sh --yes --purge-state
 ```
 
 ### 4. Monitor

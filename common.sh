@@ -288,6 +288,66 @@ raise SystemExit(1)
 PY
 }
 
+listener_pid_for_port() {
+    local port="$1"
+    if ! command -v lsof >/dev/null 2>&1; then
+        return 0
+    fi
+
+    lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null | head -1 || true
+}
+
+dashboard_project_profile_at_url() {
+    local url="$1"
+
+    python3 - "${url}" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+base_url = sys.argv[1].rstrip("/")
+request_url = f"{base_url}/api/project"
+
+try:
+    with urllib.request.urlopen(request_url, timeout=2.0) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+profile = payload.get("profile")
+if not isinstance(profile, str) or not profile:
+    raise SystemExit(1)
+
+print(profile)
+PY
+}
+
+dashboard_serves_profile() {
+    local url="$1"
+    local expected_profile="$2"
+    local observed_profile
+
+    observed_profile="$(dashboard_project_profile_at_url "${url}" 2>/dev/null || true)"
+    [[ -n "${observed_profile}" && "${observed_profile}" == "${expected_profile}" ]]
+}
+
+current_project_dashboard_pid() {
+    local url="$1"
+    local expected_profile="$2"
+    local port="$3"
+    local listener_pid
+
+    listener_pid="$(listener_pid_for_port "${port}")"
+    if [[ -z "${listener_pid}" ]]; then
+        return 0
+    fi
+
+    if dashboard_serves_profile "${url}" "${expected_profile}"; then
+        printf '%s\n' "${listener_pid}"
+    fi
+}
+
 open_url_in_browser() {
     local url="$1"
 

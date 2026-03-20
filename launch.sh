@@ -100,12 +100,8 @@ PY
 }
 
 stop_dashboard_if_running() {
-    if [[ ! -f "${DASHBOARD_PID_FILE}" ]]; then
-        return 0
-    fi
-
     local pid
-    pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
+    pid="$(current_project_dashboard_pid "${DASHBOARD_URL}" "${PROJECT_PROFILE}" "${DASHBOARD_PORT}")"
     if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
         kill "${pid}" >/dev/null 2>&1 || true
         sleep 1
@@ -160,12 +156,15 @@ start_dashboard() {
     stop_dashboard_if_running
 
     if ! dashboard_port_available; then
-        if wait_for_http_url "${DASHBOARD_URL}" 4; then
-            log "Dashboard already available at ${DASHBOARD_URL}"
-            return 0
+        local existing_pid
+        existing_pid="$(current_project_dashboard_pid "${DASHBOARD_URL}" "${PROJECT_PROFILE}" "${DASHBOARD_PORT}")"
+        if [[ -n "${existing_pid}" ]]; then
+            warn "Dashboard listener for ${PROJECT_PROFILE} is still occupying port ${DASHBOARD_PORT}; restart it manually if this persists"
+        elif wait_for_http_url "${DASHBOARD_URL}" 2; then
+            warn "Dashboard port ${DASHBOARD_PORT} is in use by another reachable service"
+        else
+            warn "Dashboard port ${DASHBOARD_PORT} is already in use — skipping automatic startup"
         fi
-
-        warn "Dashboard port ${DASHBOARD_PORT} is already in use — skipping automatic startup"
         return 1
     fi
 

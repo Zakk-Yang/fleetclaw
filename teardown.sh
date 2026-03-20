@@ -7,6 +7,7 @@ SCOPE_FILE="${SCRIPT_DIR}/project-scope.yaml"
 source "${SCRIPT_DIR}/common.sh"
 
 enable_yq_fallback
+detect_platform
 
 if [[ ! -f "$SCOPE_FILE" ]]; then
     echo "No project-scope.yaml found. Nothing to tear down."
@@ -14,6 +15,24 @@ if [[ ! -f "$SCOPE_FILE" ]]; then
 fi
 
 require_cmds git openclaw
+
+AUTO_YES=0
+PURGE_STATE=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -y|--yes)
+            AUTO_YES=1
+            ;;
+        --purge-state)
+            PURGE_STATE=1
+            ;;
+        *)
+            err "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 PROJECT_NAME=$(yq eval '.project.name' "$SCOPE_FILE")
 PROJECT_REPO=$(yq eval '.project.repo' "$SCOPE_FILE")
@@ -27,18 +46,13 @@ PROGRESS_CRON_NAME="${PROJECT_SLUG}-supervisor-progress-check"
 MORNING_CRON_NAME="${PROJECT_SLUG}-supervisor-morning-report"
 GATEWAY_PORT="$("${OPENCLAW_CMD[@]}" config get gateway.port 2>/dev/null || true)"
 DASHBOARD_PORT="$(resolve_dashboard_port_from_scope "${SCOPE_FILE}" "${OPENCLAW_PROFILE}" "${GATEWAY_PORT}")"
+DASHBOARD_URL="http://${FLEETCLAW_DASHBOARD_HOST}:${DASHBOARD_PORT}/"
 DASHBOARD_PID_FILE="${SCRIPT_DIR}/generated/dashboard.pid"
 RECONCILE_PID_FILE="${SCRIPT_DIR}/generated/reconcile.pid"
 
 stop_dashboard_if_running() {
     local pid=""
-    if [[ -f "${DASHBOARD_PID_FILE}" ]]; then
-        pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
-    fi
-
-    if [[ -z "${pid}" ]] && command -v lsof >/dev/null 2>&1; then
-        pid="$(lsof -ti "tcp:${DASHBOARD_PORT}" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
-    fi
+    pid="$(current_project_dashboard_pid "${DASHBOARD_URL}" "${OPENCLAW_PROFILE}" "${DASHBOARD_PORT}")"
 
     if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
         kill "${pid}" >/dev/null 2>&1 || true
@@ -95,11 +109,15 @@ echo "OpenClaw profile: ${OPENCLAW_PROFILE}"
 echo "Project root: ${PROJECT_ROOT}"
 echo ""
 
-read -p "This will stop the dashboard, disable heartbeat, remove cron jobs, and clean generated files. Continue? (y/N) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 0
+if [[ "${AUTO_YES}" -eq 1 ]]; then
+    info "Auto-confirm enabled"
+else
+    read -p "This will stop the dashboard, disable heartbeat, remove cron jobs, and clean generated files. Continue? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 0
+    fi
 fi
 
 # Stop dashboard
@@ -136,8 +154,22 @@ fi
 rm -rf "${SCRIPT_DIR}/generated"
 log "Cleaned generated files"
 
+if [[ "${PURGE_STATE}" -eq 1 ]]; then
+    warn "Purging dedicated OpenClaw runtime state..."
+    "${OPENCLAW_CMD[@]}" gateway uninstall >/dev/null 2>&1 || true
+    rm -rf "${PROFILE_ROOT}"
+    rm -rf "${WORKTREE_BASE}"
+    log "Purged ${PROFILE_ROOT}"
+    log "Purged ${WORKTREE_BASE}"
+fi
+
 echo ""
-echo "Done. Dedicated OpenClaw profile data was preserved at: ${PROFILE_ROOT}"
-echo "Shared project workspace preserved at: ${PROJECT_ROOT}"
-echo "Supervisor workspace preserved at: ${WORKTREE_BASE}/supervisor-workspace"
+if [[ "${PURGE_STATE}" -eq 1 ]]; then
+    echo "Done. Dedicated OpenClaw runtime state was removed."
+    echo "Project workspace preserved at: ${PROJECT_ROOT}"
+else
+    echo "Done. Dedicated OpenClaw profile data was preserved at: ${PROFILE_ROOT}"
+    echo "Shared project workspace preserved at: ${PROJECT_ROOT}"
+    echo "Supervisor workspace preserved at: ${WORKTREE_BASE}/supervisor-workspace"
+fi
 echo ""
