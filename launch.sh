@@ -26,6 +26,28 @@ slugify() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
 }
 
+# --- OS / platform detection ---
+detect_platform() {
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        FLEETCLAW_PLATFORM="macos"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+    elif grep -qi microsoft /proc/version 2>/dev/null; then
+        FLEETCLAW_PLATFORM="wsl"
+        FLEETCLAW_DASHBOARD_HOST="localhost"
+    elif [[ "$(uname -s)" == "Linux" ]]; then
+        FLEETCLAW_PLATFORM="linux"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+    elif [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]]; then
+        FLEETCLAW_PLATFORM="windows"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+    else
+        FLEETCLAW_PLATFORM="unknown"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+    fi
+}
+
+detect_platform
+
 python_yaml_available() {
     python3 - <<'PY' >/dev/null 2>&1
 import importlib.util
@@ -280,13 +302,7 @@ echo "=========================================="
 echo "  ✅ Fleet Launched"
 echo "=========================================="
 echo ""
-# Get the dashboard URL — on WSL use the WSL IP so Windows browser can connect
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    WSL_IP=$(hostname -I | awk '{print $1}')
-    DASHBOARD_HOST="${WSL_IP}"
-else
-    DASHBOARD_HOST="127.0.0.1"
-fi
+DASHBOARD_HOST="${FLEETCLAW_DASHBOARD_HOST}"
 
 # Try to extract token from gateway status
 GATEWAY_TOKEN=$("${OPENCLAW_CMD[@]}" gateway status 2>&1 | grep -oP 'token=\K[a-f0-9]+' | head -1 || true)

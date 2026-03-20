@@ -223,6 +223,37 @@ slugify() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
 }
 
+# --- OS / platform detection ---
+# Sets: FLEETCLAW_PLATFORM (linux|macos|wsl|windows)
+#       FLEETCLAW_DASHBOARD_HOST (IP/hostname for browser URLs)
+#       FLEETCLAW_GATEWAY_BIND (loopback|lan)
+detect_platform() {
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        FLEETCLAW_PLATFORM="macos"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+        FLEETCLAW_GATEWAY_BIND="loopback"
+    elif grep -qi microsoft /proc/version 2>/dev/null; then
+        FLEETCLAW_PLATFORM="wsl"
+        # WSL2 auto-forwards localhost from Windows — loopback works
+        FLEETCLAW_DASHBOARD_HOST="localhost"
+        FLEETCLAW_GATEWAY_BIND="loopback"
+    elif [[ "$(uname -s)" == "Linux" ]]; then
+        FLEETCLAW_PLATFORM="linux"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+        FLEETCLAW_GATEWAY_BIND="loopback"
+    elif [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]]; then
+        FLEETCLAW_PLATFORM="windows"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+        FLEETCLAW_GATEWAY_BIND="loopback"
+    else
+        FLEETCLAW_PLATFORM="unknown"
+        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
+        FLEETCLAW_GATEWAY_BIND="loopback"
+    fi
+}
+
+detect_platform
+
 # --- Prerequisites ---
 check_deps() {
     local missing=()
@@ -624,6 +655,7 @@ main() {
     info "Worktree base: ${WORKTREE_BASE}"
     info "Profile state dir: ${PROFILE_ROOT}"
     info "Profile gateway port: ${PROFILE_GATEWAY_PORT}"
+    info "Platform: ${FLEETCLAW_PLATFORM}"
     echo ""
 
     # --- Resolve project repo source ---
@@ -1041,9 +1073,7 @@ STATUSEOF
 "
     fi
 
-    # WSL2 auto-forwards localhost from Windows, so loopback works.
-    # No special bind needed — Windows browser reaches WSL via localhost.
-    GATEWAY_BIND="loopback"
+    GATEWAY_BIND="${FLEETCLAW_GATEWAY_BIND}"
     WSL_ORIGIN_ENTRY=""
 
     # Write config
