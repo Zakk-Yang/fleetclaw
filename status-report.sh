@@ -6,27 +6,16 @@ set -euo pipefail
 # Shows: git activity, context usage, and last supervisor note
 # ============================================================
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "${SELF_DIR}/project-scope.example.yaml" ]]; then
-    REPO_ROOT="${SELF_DIR}"
-else
-    REPO_ROOT="$(cd "${SELF_DIR}/.." && pwd)"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./common.sh
+source "${SCRIPT_DIR}/common.sh"
+
+enable_yq_fallback
+enable_jq_fallback
+
+REPO_ROOT="$(resolve_scope_root "${SCRIPT_DIR}")"
 SCOPE_FILE="${REPO_ROOT}/project-scope.yaml"
 CHECK_CONTEXT_SCRIPT="${REPO_ROOT}/check-context.sh"
-
-require_cmds() {
-    local missing=()
-    local cmd
-    for cmd in "$@"; do
-        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
-    done
-
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "Missing dependencies: ${missing[*]}"
-        exit 1
-    fi
-}
 
 if [[ ! -f "$SCOPE_FILE" ]]; then
     echo "No project-scope.yaml found."
@@ -35,19 +24,26 @@ fi
 
 require_cmds yq git
 
-slugify() {
-    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+PROJECT_NAME=$(yq eval '.project.name' "$SCOPE_FILE")
+PROJECT_REPO=$(yq eval '.project.repo' "$SCOPE_FILE")
+AGENT_COUNT=$(yq eval '.agents | length' "$SCOPE_FILE")
+OPENCLAW_PROFILE="$(resolve_openclaw_profile_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
+WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
+SUPERVISOR_WS="${WORKTREE_BASE}/supervisor-workspace"
+PROJECT_ROOT="$(resolve_project_root_path "${PROJECT_REPO}" "${SCRIPT_DIR}")"
+AGENTS_DIR="${PROJECT_ROOT}/.fleetclaw/agents"
+
+read_status_field() {
+    local field_name="$1"
+    local status_file="$2"
+    sed -n "s/^${field_name}: //p" "${status_file}" | head -1
 }
 
-PROJECT_NAME=$(yq eval '.project.name' "$SCOPE_FILE")
-AGENT_COUNT=$(yq eval '.agents | length' "$SCOPE_FILE")
-PROJECT_SLUG=$(slugify "${PROJECT_NAME}")
-OPENCLAW_PROFILE=$(yq eval ".advanced.openclaw_profile // \"${PROJECT_SLUG}\"" "$SCOPE_FILE")
-if [[ -z "${OPENCLAW_PROFILE}" || "${OPENCLAW_PROFILE}" == "null" ]]; then
-    OPENCLAW_PROFILE="${PROJECT_SLUG}"
+if git -C "${PROJECT_ROOT}" rev-parse --show-toplevel >/dev/null 2>&1; then
+    GIT_ROOT="$(git -C "${PROJECT_ROOT}" rev-parse --show-toplevel)"
+else
+    GIT_ROOT="${PROJECT_ROOT}"
 fi
-WORKTREE_BASE=$(yq eval ".advanced.worktree_base // \"$HOME/.openclaw/projects/${PROJECT_NAME}\"" "$SCOPE_FILE")
-SUPERVISOR_WS="${WORKTREE_BASE}/supervisor-workspace"
 
 echo ""
 echo "=========================================="
@@ -56,38 +52,71 @@ echo "  $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=========================================="
 
 echo "  Profile: ${OPENCLAW_PROFILE}"
+echo "  Project root: ${PROJECT_ROOT}"
 
-# --- Per-agent git status ---
+echo ""
+echo "--- Shared Repo ---"
+if git -C "${PROJECT_ROOT}" rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "  Git root: ${GIT_ROOT}"
+    echo "  Branch: $(git -C "${PROJECT_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+
+    COMMITS=$(git -C "${PROJECT_ROOT}" log --oneline -5 2>/dev/null || echo "  (no commits)")
+    echo "  Recent commits:"
+    echo "${COMMITS}" | sed 's/^/    /'
+
+    DIFF_STAT=$(git -C "${PROJECT_ROOT}" diff --stat 2>/dev/null || true)
+    UNTRACKED=$(git -C "${PROJECT_ROOT}" ls-files --others --exclude-standard 2>/dev/null || true)
+    if [[ -n "${DIFF_STAT}" ]]; then
+        echo "  Uncommitted changes:"
+        echo "${DIFF_STAT}" | sed 's/^/    /'
+    else
+        echo "  Uncommitted changes: none"
+    fi
+    if [[ -n "${UNTRACKED}" ]]; then
+        echo "  Untracked files:"
+        echo "${UNTRACKED}" | sed 's/^/    /'
+    fi
+else
+    echo "  ⚠️  Project root is not a git repository"
+fi
+
+# --- Per-agent checkpoints ---
 for i in $(seq 0 $((AGENT_COUNT - 1))); do
     AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
-    WORKTREE_PATH="${WORKTREE_BASE}/${AGENT_ID}"
+    AGENT_DIR="${AGENTS_DIR}/${AGENT_ID}"
+    STATUS_FILE="${AGENT_DIR}/STATUS.md"
+    BLOCKERS_FILE="${AGENT_DIR}/BLOCKERS.md"
 
     echo ""
     echo "--- ${AGENT_ID} ---"
 
-    if [[ ! -d "${WORKTREE_PATH}/.git" && ! -f "${WORKTREE_PATH}/.git" ]]; then
-        echo "  ⚠️  Worktree not found at ${WORKTREE_PATH}"
+    if [[ ! -f "${STATUS_FILE}" ]]; then
+        echo "  ⚠️  STATUS.md not found at ${STATUS_FILE}"
         continue
     fi
 
-    # Recent commits
-    COMMITS=$(git -C "${WORKTREE_PATH}" log --oneline -5 2>/dev/null || echo "  (no commits)")
-    echo "  Recent commits:"
-    echo "$COMMITS" | sed 's/^/    /'
+    STATE="$(read_status_field 'State' "${STATUS_FILE}")"
+    SUMMARY="$(read_status_field 'Summary' "${STATUS_FILE}")"
+    NEXT_STEP="$(read_status_field 'Next step' "${STATUS_FILE}")"
+    BLOCKER="$(read_status_field 'Blocker' "${STATUS_FILE}")"
+    FILES_TOUCHED="$(read_status_field 'Files touched' "${STATUS_FILE}")"
+    TESTS="$(read_status_field 'Tests' "${STATUS_FILE}")"
+    NEEDS_DECISION="$(read_status_field 'Needs supervisor decision' "${STATUS_FILE}")"
+    LAST_UPDATED="$(read_status_field 'Last updated' "${STATUS_FILE}")"
 
-    # Uncommitted changes
-    DIFF_STAT=$(git -C "${WORKTREE_PATH}" diff --stat 2>/dev/null || echo "  (clean)")
-    if [[ -n "$DIFF_STAT" ]]; then
-        echo "  Uncommitted changes:"
-        echo "$DIFF_STAT" | sed 's/^/    /'
-    else
-        echo "  Uncommitted changes: none"
-    fi
+    echo "  State: ${STATE:-unknown}"
+    echo "  Summary: ${SUMMARY:-none}"
+    echo "  Next step: ${NEXT_STEP:-none}"
+    echo "  Blocker: ${BLOCKER:-none}"
+    echo "  Files touched: ${FILES_TOUCHED:-none}"
+    echo "  Tests: ${TESTS:-unknown}"
+    echo "  Needs supervisor decision: ${NEEDS_DECISION:-unknown}"
+    echo "  Last updated: ${LAST_UPDATED:-unknown}"
 
     # Check for BLOCKERS.md
-    if [[ -f "${WORKTREE_PATH}/BLOCKERS.md" ]]; then
+    if [[ -f "${BLOCKERS_FILE}" ]]; then
         echo "  ⚠️  BLOCKERS.md exists:"
-        tail -5 "${WORKTREE_PATH}/BLOCKERS.md" | sed 's/^/    /'
+        tail -5 "${BLOCKERS_FILE}" | sed 's/^/    /'
     fi
 done
 
@@ -106,8 +135,8 @@ fi
 echo ""
 if [[ ! -x "$CHECK_CONTEXT_SCRIPT" ]]; then
     echo "Context usage unavailable: ${CHECK_CONTEXT_SCRIPT} is missing or not executable."
-elif ! command -v jq >/dev/null 2>&1 || ! command -v openclaw >/dev/null 2>&1; then
-    echo "Context usage unavailable: install jq and openclaw to enable it."
+elif ! command -v openclaw >/dev/null 2>&1; then
+    echo "Context usage unavailable: install openclaw to enable it."
 else
     "${CHECK_CONTEXT_SCRIPT}"
 fi

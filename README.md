@@ -78,8 +78,8 @@ your-project/
 |--------|---------|
 | `setup.sh` | Parse scope, create agent dirs, generate OpenClaw config, cron jobs |
 | `launch.sh` | Start gateway, install crons, enable heartbeat, seed sessions |
-| `sync.sh` | Merge agent work back (legacy, not needed with direct workspace) |
-| `teardown.sh` | Stop gateway, remove crons, clean up |
+| `sync.sh` | Summarize shared-repo state; no merge step is needed in direct-workspace mode |
+| `teardown.sh` | Disable heartbeat, remove crons, and clean generated files |
 
 ## Prerequisites
 

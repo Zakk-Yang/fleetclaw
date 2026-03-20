@@ -53,7 +53,7 @@ agents:
   #     - "db/"
 
 advanced:
-  worktree_base: ""                # Override worktree location (default: ~/.openclaw/projects/<name>)
+  worktree_base: ""                # Override FleetClaw runtime state location (default: ~/.openclaw/projects/<name>)
   openclaw_profile: ""             # Override OpenClaw profile name (default: slugified project name)
   gateway_port: ""                 # Override gateway port (default: auto-derived)
   default_agent_model: "openai-codex/gpt-5.4"

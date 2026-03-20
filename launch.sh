@@ -9,131 +9,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCOPE_FILE="${SCRIPT_DIR}/project-scope.yaml"
+# shellcheck source=./common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-# --- Colors ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log()  { echo -e "${GREEN}[✓]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
-info() { echo -e "${BLUE}[i]${NC} $*"; }
-
-slugify() {
-    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
-}
-
-# --- OS / platform detection ---
-detect_platform() {
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-        FLEETCLAW_PLATFORM="macos"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-    elif grep -qi microsoft /proc/version 2>/dev/null; then
-        FLEETCLAW_PLATFORM="wsl"
-        FLEETCLAW_DASHBOARD_HOST="localhost"
-    elif [[ "$(uname -s)" == "Linux" ]]; then
-        FLEETCLAW_PLATFORM="linux"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-    elif [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]]; then
-        FLEETCLAW_PLATFORM="windows"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-    else
-        FLEETCLAW_PLATFORM="unknown"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-    fi
-}
-
+enable_yq_fallback
 detect_platform
-
-python_yaml_available() {
-    python3 - <<'PY' >/dev/null 2>&1
-import importlib.util
-raise SystemExit(0 if importlib.util.find_spec("yaml") else 1)
-PY
-}
-
-# --- Fallback yq if not installed ---
-if ! command -v yq &>/dev/null; then
-    yq() {
-        python3 - "$@" <<'PY'
-import json
-import re
-import sys
-
-try:
-    import yaml
-except ImportError as exc:
-    raise SystemExit(f"PyYAML is required: {exc}")
-
-args = sys.argv[1:]
-if not args or args[0] != "eval":
-    raise SystemExit("fallback yq only supports: yq eval <expr> <file>")
-
-cursor = 1
-if cursor < len(args) and args[cursor] == "-o=json":
-    cursor += 1
-
-if len(args) - cursor != 2:
-    raise SystemExit("fallback yq expects: yq eval <expr> <file>")
-
-expr = args[cursor]
-path = args[cursor + 1]
-with open(path, "r", encoding="utf-8") as handle:
-    data = yaml.safe_load(handle) or {}
-
-def lookup(node, token):
-    if token == ".":
-        return node
-    if not token.startswith("."):
-        raise KeyError(token)
-    token = token[1:]
-    if token == "":
-        return node
-    current = node
-    for part in token.split("."):
-        match = re.fullmatch(r"([^\[\]]+)(?:\[(\d+)\])?", part)
-        if not match:
-            raise KeyError(token)
-        key = match.group(1)
-        index = match.group(2)
-        if not isinstance(current, dict) or key not in current:
-            raise KeyError(token)
-        current = current[key]
-        if index is not None:
-            idx = int(index)
-            if not isinstance(current, list) or idx >= len(current):
-                raise KeyError(token)
-            current = current[idx]
-    return current
-
-parts = expr.split(" // ")
-value = None
-for part in parts:
-    part = part.strip()
-    if part.startswith('"') and part.endswith('"'):
-        value = part[1:-1]
-        break
-    try:
-        value = lookup(data, part)
-        if value is not None:
-            break
-    except KeyError:
-        continue
-
-if isinstance(value, (dict, list)):
-    print(json.dumps(value))
-elif isinstance(value, bool):
-    print(str(value).lower())
-elif value is None:
-    print("null")
-else:
-    print(value)
-PY
-    }
-fi
 
 # --- Validate prerequisites ---
 if [[ ! -f "$SCOPE_FILE" ]]; then
@@ -146,12 +26,7 @@ if [[ ! -d "${SCRIPT_DIR}/generated" ]]; then
     exit 1
 fi
 
-for cmd in openclaw git python3; do
-    if ! command -v "$cmd" &>/dev/null; then
-        err "Missing dependency: $cmd"
-        exit 1
-    fi
-done
+require_cmds openclaw git python3
 
 # --- Parse scope ---
 yval() { yq eval "$1" "$SCOPE_FILE"; }
@@ -159,60 +34,14 @@ yval_default() { yq eval "$1 // \"$2\"" "$SCOPE_FILE"; }
 
 PROJECT_NAME=$(yval '.project.name')
 PROJECT_SLUG=$(slugify "${PROJECT_NAME}")
-PROJECT_PROFILE_RAW=$(yval_default '.advanced.openclaw_profile' '')
-if [[ -z "${PROJECT_PROFILE_RAW}" || "${PROJECT_PROFILE_RAW}" == "null" ]]; then
-    PROJECT_PROFILE="${PROJECT_SLUG}"
-else
-    PROJECT_PROFILE="$(slugify "${PROJECT_PROFILE_RAW}")"
-fi
-if [[ -z "${PROJECT_PROFILE}" ]]; then
-    PROJECT_PROFILE="${PROJECT_SLUG}"
-fi
+PROJECT_PROFILE="$(resolve_openclaw_profile_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
 
 AGENT_COUNT=$(yq eval '.agents | length' "$SCOPE_FILE")
-WORKTREE_BASE=$(yval_default '.advanced.worktree_base' "$HOME/.openclaw/projects/${PROJECT_NAME}")
-if [[ -z "${WORKTREE_BASE}" || "${WORKTREE_BASE}" == "null" ]]; then
-    WORKTREE_BASE="$HOME/.openclaw/projects/${PROJECT_NAME}"
-fi
+WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
 
 PROJECT_REPO=$(yval '.project.repo')
 SUPERVISOR_THINKING=$(yval_default '.supervisor.thinking' '')
-
-# --- Resolve project root (same logic as setup.sh) ---
-expand_path() {
-    local raw_path="$1"
-    if [[ "${raw_path}" == "~" || "${raw_path}" == ~/* ]]; then
-        printf '%s\n' "${raw_path/#\~/$HOME}"
-    else
-        printf '%s\n' "${raw_path}"
-    fi
-}
-
-resolve_project_root() {
-    local repo_source="$1"
-    if [[ -z "${repo_source}" || "${repo_source}" == "null" || "${repo_source}" == "." ]]; then
-        repo_source="${SCRIPT_DIR}"
-    fi
-    repo_source="$(expand_path "${repo_source}")"
-    if [[ "${repo_source}" != /* ]]; then
-        repo_source="${SCRIPT_DIR}/${repo_source}"
-    fi
-    if [[ "${repo_source}" == "${SCRIPT_DIR}" ]]; then
-        local parent_dir
-        parent_dir="$(dirname "${SCRIPT_DIR}")"
-        if [[ -d "${parent_dir}" ]]; then
-            printf '%s\n' "${parent_dir}"
-            return 0
-        fi
-    fi
-    if [[ -d "${repo_source}" ]]; then
-        printf '%s\n' "${repo_source}"
-        return 0
-    fi
-    return 1
-}
-
-PROJECT_ROOT="$(resolve_project_root "${PROJECT_REPO}")"
+PROJECT_ROOT="$(resolve_project_root_path "${PROJECT_REPO}" "${SCRIPT_DIR}")"
 
 # Derive gateway port (same logic as setup.sh)
 CONFIGURED_PORT=$(yval_default '.advanced.gateway_port' '')

@@ -58,6 +58,32 @@ function resolveGatewayConfig(profile) {
   } catch { return null; }
 }
 
+function resolveGatewayState(scope) {
+  const profile = resolveProfile(scope);
+  const gatewayConfig = resolveGatewayConfig(profile);
+  return {
+    profile,
+    port: gatewayConfig?.gateway?.port || scope.advanced?.gateway_port || null,
+    token: gatewayConfig?.gateway?.auth?.token || null,
+  };
+}
+
+function buildGatewayUrl(port, token, pathname = '/', params = null) {
+  if (!port) return null;
+  const url = new URL(`http://localhost:${port}${pathname}`);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== '') {
+        url.searchParams.set(key, value);
+      }
+    }
+  }
+  if (token) {
+    url.hash = `token=${encodeURIComponent(token)}`;
+  }
+  return url.toString();
+}
+
 function readMdFile(filePath) {
   try { return fs.readFileSync(filePath, 'utf8'); } catch { return null; }
 }
@@ -105,24 +131,19 @@ app.get('/api/project', (req, res) => {
   const scope = loadScope();
   if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
 
-  const profile = resolveProfile(scope);
   const projectRoot = resolveProjectRoot(scope);
-  const gatewayConfig = resolveGatewayConfig(profile);
+  const gateway = resolveGatewayState(scope);
   const git = getGitInfo(projectRoot);
-
-  const port = gatewayConfig?.gateway?.port || scope.advanced?.gateway_port || null;
-  const token = gatewayConfig?.gateway?.auth?.token || null;
 
   res.json({
     name: scope.project.name,
     description: scope.project.description,
     branch: scope.project.branch || 'main',
-    profile,
+    profile: gateway.profile,
     gateway: {
-      port,
-      token,
-      url: port ? `http://localhost:${port}/` : null,
-      dashboardUrl: port && token ? `http://localhost:${port}/#token=${token}` : null,
+      port: gateway.port,
+      url: gateway.port ? `http://localhost:${gateway.port}/` : null,
+      openclawUrl: gateway.port ? '/openclaw' : null,
     },
     supervisor: {
       model: scope.supervisor?.model || 'unknown',
@@ -137,11 +158,9 @@ app.get('/api/agents', (req, res) => {
   const scope = loadScope();
   if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
 
-  const profile = resolveProfile(scope);
   const projectRoot = resolveProjectRoot(scope);
   const worktreeBase = resolveWorktreeBase(scope);
-  const gatewayConfig = resolveGatewayConfig(profile);
-  const port = gatewayConfig?.gateway?.port || null;
+  const gateway = resolveGatewayState(scope);
   const projectSlug = slugify(scope.project.name);
   const fleetclawDir = path.join(projectRoot, '.fleetclaw', 'agents');
 
@@ -171,7 +190,7 @@ app.get('/api/agents', (req, res) => {
       thinking: agent.thinking || scope.advanced?.default_agent_thinking || '',
       focusDirs: agent.focus_dirs || [],
       task: agent.task || '',
-      sessionUrl: port ? `http://localhost:${port}/chat?session=agent:${runtimeId}:main` : null,
+      sessionUrl: gateway.port ? `/openclaw/agent/${encodeURIComponent(agent.id)}` : null,
       statusFields,
       files: {
         status,
@@ -201,12 +220,53 @@ app.get('/api/agents', (req, res) => {
     agents,
     supervisor: {
       runtimeId: supervisorRuntimeId,
-      sessionUrl: port ? `http://localhost:${port}/chat?session=agent:${supervisorRuntimeId}:main` : null,
+      sessionUrl: gateway.port ? '/openclaw/supervisor' : null,
       status: supervisorStatus,
       roster: supervisorRoster,
       latestMemory: supervisorLatestMemory,
     },
   });
+});
+
+app.get('/openclaw', (req, res) => {
+  const scope = loadScope();
+  if (!scope) return res.status(404).send('project-scope.yaml not found');
+
+  const gateway = resolveGatewayState(scope);
+  const target = buildGatewayUrl(gateway.port, gateway.token);
+
+  if (!target) return res.status(503).send('OpenClaw gateway is not configured');
+  res.redirect(target);
+});
+
+app.get('/openclaw/agent/:id', (req, res) => {
+  const scope = loadScope();
+  if (!scope) return res.status(404).send('project-scope.yaml not found');
+
+  const { id } = req.params;
+  if (!/^[a-zA-Z0-9._-]+$/.test(id)) return res.status(400).send('Invalid agent id');
+
+  const agentExists = (scope.agents || []).some((agent) => agent.id === id);
+  if (!agentExists) return res.status(404).send('Agent not found');
+
+  const gateway = resolveGatewayState(scope);
+  const runtimeId = `${slugify(scope.project.name)}-${id}`;
+  const target = buildGatewayUrl(gateway.port, gateway.token, '/chat', { session: `agent:${runtimeId}:main` });
+
+  if (!target) return res.status(503).send('OpenClaw gateway is not configured');
+  res.redirect(target);
+});
+
+app.get('/openclaw/supervisor', (req, res) => {
+  const scope = loadScope();
+  if (!scope) return res.status(404).send('project-scope.yaml not found');
+
+  const gateway = resolveGatewayState(scope);
+  const runtimeId = `${slugify(scope.project.name)}-supervisor`;
+  const target = buildGatewayUrl(gateway.port, gateway.token, '/chat', { session: `agent:${runtimeId}:main` });
+
+  if (!target) return res.status(503).send('OpenClaw gateway is not configured');
+  res.redirect(target);
 });
 
 app.get('/api/agent/:id/file/:filename', (req, res) => {

@@ -12,246 +12,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCOPE_FILE="${SCRIPT_DIR}/project-scope.yaml"
+# shellcheck source=./common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-# --- Colors ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log()  { echo -e "${GREEN}[✓]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
-info() { echo -e "${BLUE}[i]${NC} $*"; }
-
-python_yaml_available() {
-    python3 - <<'PY' >/dev/null 2>&1
-import importlib.util
-raise SystemExit(0 if importlib.util.find_spec("yaml") else 1)
-PY
-}
-
-if ! command -v yq &>/dev/null; then
-    yq() {
-        python3 - "$@" <<'PY'
-import json
-import re
-import sys
-
-try:
-    import yaml
-except ImportError as exc:
-    raise SystemExit(f"PyYAML is required for the fallback yq implementation: {exc}")
-
-args = sys.argv[1:]
-if not args or args[0] != "eval":
-    raise SystemExit("fallback yq only supports: yq eval [ -o=json ] <expr> <file>")
-
-json_output = False
-cursor = 1
-if cursor < len(args) and args[cursor] == "-o=json":
-    json_output = True
-    cursor += 1
-
-if len(args) - cursor != 2:
-    raise SystemExit("fallback yq expects: yq eval [ -o=json ] <expr> <file>")
-
-expr = args[cursor]
-path = args[cursor + 1]
-with open(path, "r", encoding="utf-8") as handle:
-    data = yaml.safe_load(handle) or {}
-
-
-def split_unquoted(text: str, sep: str) -> list[str]:
-    parts = []
-    current = []
-    in_quote = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch == '"':
-            in_quote = not in_quote
-            current.append(ch)
-            i += 1
-            continue
-        if not in_quote and text.startswith(sep, i):
-            parts.append("".join(current).strip())
-            current = []
-            i += len(sep)
-            continue
-        current.append(ch)
-        i += 1
-    parts.append("".join(current).strip())
-    return parts
-
-
-def lookup(node, token):
-    if token == ".":
-        return node
-    if not token.startswith("."):
-        raise KeyError(token)
-    token = token[1:]
-    if token == "":
-        return node
-    current = node
-    for part in token.split("."):
-        match = re.fullmatch(r"([^\[\]]+)(?:\[(\d+)\])?", part)
-        if not match:
-            raise KeyError(token)
-        key = match.group(1)
-        index = match.group(2)
-        if not isinstance(current, dict) or key not in current:
-            raise KeyError(token)
-        current = current[key]
-        if index is not None:
-            idx = int(index)
-            if not isinstance(current, list) or idx >= len(current):
-                raise KeyError(token)
-            current = current[idx]
-    return current
-
-
-def eval_term(node, term):
-    term = term.strip()
-    if term == "[]":
-        return []
-    if term == "empty":
-        return None
-    if term.startswith('"') and term.endswith('"'):
-        return bytes(term[1:-1], "utf-8").decode("unicode_escape")
-    return lookup(node, term)
-
-
-def eval_base(node, base_expr):
-    for term in split_unquoted(base_expr, "//"):
-        try:
-            value = eval_term(node, term)
-        except KeyError:
-            continue
-        if value is not None:
-            return value
-    return None
-
-
-parts = split_unquoted(expr, "|")
-value = eval_base(data, parts[0])
-emit_each = False
-for part in parts[1:]:
-    part = part.strip()
-    if part == "length":
-        value = len(value) if value is not None else 0
-    elif part == ".[]":
-        emit_each = True
-    else:
-        join_match = re.fullmatch(r'join\("(.+)"\)', part)
-        if join_match:
-            separator = bytes(join_match.group(1), "utf-8").decode("unicode_escape")
-            value = separator.join(str(item) for item in (value or []))
-        else:
-            raise SystemExit(f"fallback yq does not support expression: {expr}")
-
-if emit_each:
-    for item in value or []:
-        if isinstance(item, (dict, list)):
-            print(json.dumps(item))
-        elif isinstance(item, bool):
-            print(str(item).lower())
-        else:
-            print(item)
-    raise SystemExit(0)
-
-if json_output:
-    print(json.dumps(value))
-elif isinstance(value, bool):
-    print(str(value).lower())
-elif value is None:
-    print("null")
-elif isinstance(value, (dict, list)):
-    print(json.dumps(value))
-else:
-    print(value)
-PY
-    }
-fi
-
-if ! command -v jq &>/dev/null; then
-    jq() {
-        python3 - "$@" <<'PY'
-import json
-import sys
-
-args = sys.argv[1:]
-raw = False
-if args and args[0] == "-r":
-    raw = True
-    args = args[1:]
-
-if len(args) != 1:
-    raise SystemExit("fallback jq only supports: jq [-r] '<filter>'")
-
-filter_expr = args[0].strip()
-data = json.load(sys.stdin)
-
-if filter_expr == '.every // empty':
-    value = data.get("every") if isinstance(data, dict) else None
-    if value not in (None, ""):
-        print(value)
-elif filter_expr == '.target // "none"':
-    value = data.get("target") if isinstance(data, dict) else None
-    print("none" if value in (None, "") else value)
-elif filter_expr == 'keys[]?':
-    if isinstance(data, dict):
-        for key in data.keys():
-            print(key)
-elif filter_expr == 'if type == "string" then\n            .\n        elif type == "object" then\n            [.primary, (.fallbacks[]?)] | .[]\n        else\n            empty\n        end':
-    if isinstance(data, str):
-        print(data)
-    elif isinstance(data, dict):
-        primary = data.get("primary")
-        fallbacks = data.get("fallbacks") or []
-        for value in [primary, *fallbacks]:
-            if value:
-                print(value)
-else:
-    raise SystemExit(f"fallback jq does not support filter: {filter_expr}")
-PY
-    }
-fi
-
-slugify() {
-    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
-}
-
-# --- OS / platform detection ---
-# Sets: FLEETCLAW_PLATFORM (linux|macos|wsl|windows)
-#       FLEETCLAW_DASHBOARD_HOST (IP/hostname for browser URLs)
-#       FLEETCLAW_GATEWAY_BIND (loopback|lan)
-detect_platform() {
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-        FLEETCLAW_PLATFORM="macos"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-        FLEETCLAW_GATEWAY_BIND="loopback"
-    elif grep -qi microsoft /proc/version 2>/dev/null; then
-        FLEETCLAW_PLATFORM="wsl"
-        # WSL2 auto-forwards localhost from Windows — loopback works
-        FLEETCLAW_DASHBOARD_HOST="localhost"
-        FLEETCLAW_GATEWAY_BIND="loopback"
-    elif [[ "$(uname -s)" == "Linux" ]]; then
-        FLEETCLAW_PLATFORM="linux"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-        FLEETCLAW_GATEWAY_BIND="loopback"
-    elif [[ "$(uname -s)" =~ MINGW|MSYS|CYGWIN ]]; then
-        FLEETCLAW_PLATFORM="windows"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-        FLEETCLAW_GATEWAY_BIND="loopback"
-    else
-        FLEETCLAW_PLATFORM="unknown"
-        FLEETCLAW_DASHBOARD_HOST="127.0.0.1"
-        FLEETCLAW_GATEWAY_BIND="loopback"
-    fi
-}
-
+enable_yq_fallback
+enable_jq_fallback
 detect_platform
 
 # --- Prerequisites ---
@@ -267,10 +32,10 @@ check_deps() {
         echo "Install them and re-run this script."
         exit 1
     fi
-    if ! command -v yq &>/dev/null; then
+    if [[ "${FLEETCLAW_USING_YQ_FALLBACK}" == "1" ]]; then
         warn "yq not found; using built-in Python fallback"
     fi
-    if ! command -v jq &>/dev/null; then
+    if [[ "${FLEETCLAW_USING_JQ_FALLBACK}" == "1" ]]; then
         warn "jq not found; using built-in Python fallback"
     fi
     log "All dependencies found"
@@ -291,18 +56,8 @@ read_scope() {
 yval() { yq eval "$1" "$SCOPE_FILE"; }
 yval_default() { yq eval "$1 // \"$2\"" "$SCOPE_FILE"; }
 
-expand_path() {
-    local raw_path="$1"
-    if [[ "${raw_path}" == "~" || "${raw_path}" == ~/* ]]; then
-        printf '%s\n' "${raw_path/#\~/$HOME}"
-    else
-        printf '%s\n' "${raw_path}"
-    fi
-}
-
 resolve_local_repo_path() {
     local repo_source="$1"
-    local expanded_path
 
     if [[ -z "${repo_source}" || "${repo_source}" == "null" || "${repo_source}" == "." ]]; then
         repo_source="${SCRIPT_DIR}"
@@ -315,8 +70,8 @@ resolve_local_repo_path() {
 
     # If the resolved path IS the fleetclaw directory (a subdirectory of the
     # actual project), prefer the parent directory as the project repo.
-    # This way agent worktrees are checkouts of the project, and focus_dirs
-    # like focus_dirs resolve relative to the project root.
+    # This way the shared agent workspace is the project root and focus_dirs
+    # resolve relative to the actual project.
     if [[ "${repo_source}" == "${SCRIPT_DIR}" ]]; then
         local parent_dir
         parent_dir="$(dirname "${SCRIPT_DIR}")"
@@ -327,7 +82,7 @@ resolve_local_repo_path() {
             return 0
         elif [[ -d "${parent_dir}" ]]; then
             # Parent exists but is not a git repo — initialize one so
-            # worktrees, diffs, and commits work for the project root
+            # diffs and commits work for the shared project root
             echo -e "${BLUE}[i]${NC} Initializing git repo in project root: ${parent_dir}" >&2
             git -C "${parent_dir}" init -q
             git -C "${parent_dir}" add -A 2>/dev/null || true
@@ -601,20 +356,9 @@ main() {
     REPORT_TZ=$(yval_default '.supervisor.morning_report_tz' 'Europe/London')
 
     AGENT_COUNT=$(yq eval '.agents | length' "$SCOPE_FILE")
-    WORKTREE_BASE=$(yval_default '.advanced.worktree_base' "$HOME/.openclaw/projects/${PROJECT_NAME}")
-    if [[ -z "${WORKTREE_BASE}" || "${WORKTREE_BASE}" == "null" ]]; then
-        WORKTREE_BASE="$HOME/.openclaw/projects/${PROJECT_NAME}"
-    fi
-    PROJECT_SLUG=$(slugify "${PROJECT_NAME}")
-    PROJECT_PROFILE_RAW=$(yval_default '.advanced.openclaw_profile' '')
-    if [[ -z "${PROJECT_PROFILE_RAW}" || "${PROJECT_PROFILE_RAW}" == "null" ]]; then
-        PROJECT_PROFILE="${PROJECT_SLUG}"
-    else
-        PROJECT_PROFILE="$(slugify "${PROJECT_PROFILE_RAW}")"
-    fi
-    if [[ -z "${PROJECT_PROFILE}" ]]; then
-        PROJECT_PROFILE="${PROJECT_SLUG}"
-    fi
+    WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
+    PROJECT_SLUG="$(slugify "${PROJECT_NAME}")"
+    PROJECT_PROFILE="$(resolve_openclaw_profile_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
     PROFILE_ROOT="${HOME}/.openclaw-${PROJECT_PROFILE}"
     PROFILE_CONFIG_PATH="${PROFILE_ROOT}/openclaw.json"
     PROFILE_GATEWAY_PORT="$(derive_gateway_port "${PROJECT_PROFILE}" "$(yval_default '.advanced.gateway_port' '')")"
