@@ -366,14 +366,16 @@ function render() {
     supervisor.sessionUrl ? `<a href="${supervisor.sessionUrl}" target="_blank">Open supervisor chat</a>` : '',
   ].filter(Boolean).join(' | ');
 
-  const changedFiles = projectData.git.changedFiles || [];
+  const changedFiles = projectData.git.modifiedFiles || projectData.git.changedFiles || [];
+  const untrackedCount = Number(projectData.git.untrackedCount || 0);
   let changedHtml = '';
   if (changedFiles.length > 0) {
     changedHtml = '<table class="metrics-table">';
     changedHtml += '<thead><tr><th>Modified</th><th>File</th><th>Status</th></tr></thead><tbody>';
     for (const file of changedFiles) {
       const time = file.mtime ? new Date(file.mtime).toLocaleTimeString() : '-';
-      const status = file.untracked ? '<span style="color:var(--green)">new</span>' : '<span style="color:var(--yellow)">modified</span>';
+      const state = `${file.indexStatus || ''}${file.worktreeStatus || ''}`.trim();
+      const status = state ? `<span style="color:var(--yellow)">${esc(state)}</span>` : '<span style="color:var(--yellow)">modified</span>';
       changedHtml += `<tr><td class="mono">${time}</td><td>${esc(file.file)}</td><td>${status}</td></tr>`;
     }
     changedHtml += '</tbody></table>';
@@ -402,8 +404,9 @@ function render() {
       <div class="card-header"><h2>Git</h2></div>
       <div class="card-body">
         <pre>${esc(projectData.git.log || 'No git history yet')}</pre>
-        <div class="section-title">Unstaged Changes (${changedFiles.length})</div>
-        ${changedFiles.length > 0 ? changedHtml : '<span class="subtle" style="color:var(--green)">Working tree clean</span>'}
+        <div class="section-title">Modified Files (${changedFiles.length})</div>
+        ${changedFiles.length > 0 ? changedHtml : '<span class="subtle" style="color:var(--green)">No tracked file modifications</span>'}
+        ${untrackedCount > 0 ? `<div class="subtle" style="margin-top:8px">Hidden untracked files: ${esc(String(untrackedCount))}</div>` : ''}
       </div>
     </div>
   `;

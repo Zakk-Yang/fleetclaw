@@ -70,6 +70,14 @@ function execText(command, options = {}) {
   }
 }
 
+function execRawText(command, options = {}) {
+  try {
+    return execSync(command, { encoding: 'utf8', timeout: 5000, ...options });
+  } catch {
+    return '';
+  }
+}
+
 function execFileText(command, args, options = {}) {
   try {
     return execFileSync(command, args, { encoding: 'utf8', timeout: 5000, ...options }).trim();
@@ -86,6 +94,63 @@ function execFileJson(command, args, options = {}) {
   } catch {
     return null;
   }
+}
+
+function getFileMtime(filePath) {
+  try {
+    return fs.statSync(filePath).mtime.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function isEmbeddedGitRepo(filePath) {
+  try {
+    return fs.statSync(filePath).isDirectory() && fs.existsSync(path.join(filePath, '.git'));
+  } catch {
+    return false;
+  }
+}
+
+function parseGitStatus(statusRaw, repoRoot, prefix = '') {
+  const modifiedFiles = [];
+  const untrackedFiles = [];
+  const seen = new Set();
+
+  for (const rawLine of statusRaw ? statusRaw.split('\n') : []) {
+    if (!rawLine) continue;
+
+    const indexStatus = rawLine[0];
+    const worktreeStatus = rawLine[1];
+    let file = rawLine.slice(3).trim();
+    if (!file) continue;
+    if (file.includes(' -> ')) {
+      file = file.split(' -> ').pop();
+    }
+
+    const relativeFile = prefix
+      ? path.posix.join(prefix.replace(/\\/g, '/'), file.replace(/\\/g, '/'))
+      : file;
+    const dedupeKey = `${indexStatus}${worktreeStatus}:${relativeFile}`;
+    if (!relativeFile || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const entry = {
+      file: relativeFile,
+      mtime: getFileMtime(path.join(repoRoot, file)),
+      indexStatus,
+      worktreeStatus,
+    };
+
+    if (indexStatus === '?' && worktreeStatus === '?') {
+      untrackedFiles.push({ file: relativeFile, mtime: entry.mtime, untracked: true });
+      continue;
+    }
+
+    modifiedFiles.push(entry);
+  }
+
+  return { modifiedFiles, untrackedFiles };
 }
 
 function resolveGatewayConfigFromProfileFile(profile) {
@@ -176,27 +241,27 @@ function getGitInfo(projectRoot) {
   try {
     const log = execText('git log --oneline -10', { cwd: projectRoot });
     const branch = execText('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }) || 'unknown';
-    const diffNames = execText('git diff --name-only', { cwd: projectRoot });
-    const untrackedRaw = execText('git ls-files --others --exclude-standard', { cwd: projectRoot });
+    const statusRaw = execRawText('git status --porcelain=v1 --untracked-files=all', { cwd: projectRoot });
     const diffStat = execText('git diff --stat', { cwd: projectRoot });
+    const parsedRootStatus = parseGitStatus(statusRaw, projectRoot);
+    const modifiedFiles = [];
+    const untrackedFiles = [...parsedRootStatus.untrackedFiles];
 
-    const changedFiles = [];
-    const allFiles = [
-      ...(diffNames ? diffNames.split('\n') : []),
-      ...(untrackedRaw ? untrackedRaw.split('\n') : []),
-    ];
-    const seen = new Set();
-    const untrackedSet = new Set(untrackedRaw ? untrackedRaw.split('\n').filter(Boolean) : []);
+    for (const entry of parsedRootStatus.modifiedFiles) {
+      const fullPath = path.join(projectRoot, entry.file);
+      if (!isEmbeddedGitRepo(fullPath)) {
+        modifiedFiles.push(entry);
+        continue;
+      }
 
-    for (const file of allFiles) {
-      if (!file || seen.has(file)) continue;
-      seen.add(file);
-      const fullPath = path.join(projectRoot, file);
-      let mtime = null;
-      try {
-        mtime = fs.statSync(fullPath).mtime.toISOString();
-      } catch {}
-      changedFiles.push({ file, mtime, untracked: untrackedSet.has(file) });
+      const nestedStatusRaw = execRawText('git status --porcelain=v1 --untracked-files=all', { cwd: fullPath });
+      const nestedStatus = parseGitStatus(nestedStatusRaw, fullPath, entry.file);
+      if (nestedStatus.modifiedFiles.length > 0) {
+        modifiedFiles.push(...nestedStatus.modifiedFiles);
+      } else {
+        modifiedFiles.push(entry);
+      }
+      untrackedFiles.push(...nestedStatus.untrackedFiles);
     }
 
     const statLines = diffStat ? diffStat.split('\n') : [];
@@ -205,7 +270,11 @@ function getGitInfo(projectRoot) {
     return {
       branch,
       log,
-      changedFiles,
+      changedFiles: modifiedFiles,
+      modifiedFiles,
+      untrackedFiles,
+      modifiedCount: modifiedFiles.length,
+      untrackedCount: untrackedFiles.length,
       diffSummary: summaryLine,
       timestamp: new Date().toISOString(),
     };
@@ -214,6 +283,10 @@ function getGitInfo(projectRoot) {
       branch: 'unknown',
       log: '',
       changedFiles: [],
+      modifiedFiles: [],
+      untrackedFiles: [],
+      modifiedCount: 0,
+      untrackedCount: 0,
       diffSummary: '',
       timestamp: new Date().toISOString(),
     };
