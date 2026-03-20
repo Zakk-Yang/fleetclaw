@@ -47,6 +47,7 @@ Use the decisions like this:
 - `STOP` → pause implementation now
 - `ACCEPT_DONE` → work is accepted as complete for now
 - `ESCALATE` → human decision is required
+- When sending `ACCEPT_DONE`, explicitly tell the agent to update `STATUS.md` to `State: done`, clear the pending decision fields, and stop active work
 
 If STATUS.md says `State: done`, verify the diff/tests before sending `ACCEPT_DONE`.
 

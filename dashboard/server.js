@@ -37,6 +37,16 @@ function loadScope() {
   return yaml.load(fs.readFileSync(SCOPE_FILE, 'utf8'));
 }
 
+function resolveScopeText(rawText, rawFilePath) {
+  if (rawFilePath && typeof rawFilePath === 'string') {
+    const expanded = rawFilePath.startsWith('~') ? rawFilePath.replace('~', process.env.HOME) : rawFilePath;
+    const resolved = path.isAbsolute(expanded) ? expanded : path.join(SCRIPT_DIR, expanded);
+    const content = readMdFile(resolved);
+    if (content) return content.trim();
+  }
+  return typeof rawText === 'string' ? rawText.trim() : '';
+}
+
 function slugify(value) {
   return String(value || '')
     .toLowerCase()
@@ -60,6 +70,28 @@ function readMdFile(filePath) {
   } catch {
     return null;
   }
+}
+
+function parseTimestamp(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value);
+  }
+  if (typeof value === 'string' && value) {
+    const normalized = value.endsWith('Z') ? value : value.replace(' ', 'T');
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function extractTextContent(content) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((item) => item && item.type === 'text' && typeof item.text === 'string')
+    .map((item) => item.text)
+    .join('\n')
+    .trim();
 }
 
 function execText(command, options = {}) {
@@ -151,6 +183,74 @@ function parseGitStatus(statusRaw, repoRoot, prefix = '') {
   }
 
   return { modifiedFiles, untrackedFiles };
+}
+
+function findLatestSupervisorDecision(profile, runtimeAgentId, supervisorRuntimeId) {
+  const sessionDir = path.join(process.env.HOME, `.openclaw-${profile}`, 'agents', runtimeAgentId, 'sessions');
+  if (!fs.existsSync(sessionDir)) return null;
+
+  const files = fs.readdirSync(sessionDir)
+    .filter((name) => name.endsWith('.jsonl'))
+    .sort();
+
+  let latest = null;
+  const supervisorPrefix = `agent:${supervisorRuntimeId}:`;
+
+  for (const fileName of files) {
+    const filePath = path.join(sessionDir, fileName);
+    let lines = [];
+    try {
+      lines = fs.readFileSync(filePath, 'utf8').split('\n');
+    } catch {
+      continue;
+    }
+
+    for (const rawLine of lines) {
+      if (!rawLine) continue;
+
+      let payload;
+      try {
+        payload = JSON.parse(rawLine);
+      } catch {
+        continue;
+      }
+
+      const message = payload?.message;
+      if (!message || typeof message !== 'object') continue;
+      if (message.role !== 'user') continue;
+
+      const provenance = message.provenance;
+      if (!provenance || typeof provenance !== 'object') continue;
+      if (provenance.kind !== 'inter_session') continue;
+      if (typeof provenance.sourceSessionKey !== 'string' || !provenance.sourceSessionKey.startsWith(supervisorPrefix)) continue;
+
+      const text = extractTextContent(message.content);
+      if (!text) continue;
+
+      const match = text.match(/SUPERVISOR_DECISION:\s*([A-Z_]+)/);
+      if (!match) continue;
+
+      const sentAt = parseTimestamp(payload.timestamp) || parseTimestamp(message.timestamp);
+      if (!sentAt) continue;
+
+      if (!latest || sentAt > latest.sentAt) {
+        latest = {
+          decision: match[1],
+          text,
+          sentAt,
+          sourceSessionKey: provenance.sourceSessionKey,
+        };
+      }
+    }
+  }
+
+  if (!latest) return null;
+  return {
+    decision: latest.decision,
+    text: latest.text,
+    sentAt: latest.sentAt.toISOString(),
+    sourceSessionKey: latest.sourceSessionKey,
+  };
 }
 
 function resolveGatewayConfigFromProfileFile(profile) {
@@ -517,6 +617,7 @@ function buildDashboardPayload() {
 
   const projectSlug = slugify(scope.project.name);
   const fleetclawDir = path.join(projectRoot, '.fleetclaw', 'agents');
+  const supervisorRuntimeId = `${projectSlug}-supervisor`;
   const agents = (scope.agents || []).map((agent) => {
     const agentDir = path.join(fleetclawDir, agent.id);
     const runtimeId = `${projectSlug}-${agent.id}`;
@@ -535,6 +636,7 @@ function buildDashboardPayload() {
       task: agent.task || '',
       sessionUrl: gateway.port ? `/openclaw/agent/${encodeURIComponent(agent.id)}` : null,
       statusFields: parseStatusFields(status),
+      latestSupervisorDecision: findLatestSupervisorDecision(profile, runtimeId, supervisorRuntimeId),
       instructionBudget: {
         startup: markdownByRole.get(`${agent.id}:startup`) || null,
         withShared: markdownByRole.get(`${agent.id}:with_shared`) || null,
@@ -551,7 +653,6 @@ function buildDashboardPayload() {
   });
 
   const supervisorWorkspace = path.join(worktreeBase, 'supervisor-workspace');
-  const supervisorRuntimeId = `${projectSlug}-supervisor`;
   const supervisorStatus = readMdFile(path.join(supervisorWorkspace, 'STATUS.md'));
   const supervisorRoster = readMdFile(path.join(supervisorWorkspace, 'ROSTER.md'));
   const supervisorMemoryDir = path.join(supervisorWorkspace, 'memory');
@@ -570,9 +671,15 @@ function buildDashboardPayload() {
   return {
     project: {
       name: scope.project.name,
-      description: scope.project.description,
+      description: resolveScopeText(scope.project.description, scope.project.description_file),
       branch: scope.project.branch || 'main',
       profile,
+      review: {
+        url: scope.project.review_url || '',
+        command: scope.project.review_command || '',
+        designCommand: scope.project.design_review_command || '',
+        notes: scope.project.review_notes || '',
+      },
       gateway: {
         port: gateway.port,
         url: gateway.port ? `http://localhost:${gateway.port}/` : null,
@@ -587,6 +694,7 @@ function buildDashboardPayload() {
         model: scope.supervisor?.model || 'unknown',
         checkInterval: scope.supervisor?.check_interval_mins || 10,
         thinking: scope.supervisor?.thinking || '',
+        statusReconcileIntervalSecs: scope.supervisor?.status_reconcile_interval_secs || 30,
       },
       git,
     },

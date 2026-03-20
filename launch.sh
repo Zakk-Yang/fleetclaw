@@ -65,6 +65,9 @@ DASHBOARD_DIR="${SCRIPT_DIR}/dashboard"
 DASHBOARD_PID_FILE="${SCRIPT_DIR}/generated/dashboard.pid"
 DASHBOARD_LOG_FILE="${SCRIPT_DIR}/generated/dashboard.log"
 DASHBOARD_INSTALL_LOG_FILE="${SCRIPT_DIR}/generated/dashboard-install.log"
+RECONCILE_INTERVAL_SECS="$(yval_default '.supervisor.status_reconcile_interval_secs' '30')"
+RECONCILE_PID_FILE="${SCRIPT_DIR}/generated/reconcile.pid"
+RECONCILE_LOG_FILE="${SCRIPT_DIR}/generated/reconcile.log"
 
 agent_runtime_id() {
     printf '%s-%s\n' "${PROJECT_SLUG}" "$1"
@@ -106,6 +109,20 @@ stop_dashboard_if_running() {
         sleep 1
     fi
     rm -f "${DASHBOARD_PID_FILE}"
+}
+
+stop_reconciler_if_running() {
+    if [[ ! -f "${RECONCILE_PID_FILE}" ]]; then
+        return 0
+    fi
+
+    local pid
+    pid="$(cat "${RECONCILE_PID_FILE}" 2>/dev/null || true)"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+        kill "${pid}" >/dev/null 2>&1 || true
+        sleep 1
+    fi
+    rm -f "${RECONCILE_PID_FILE}"
 }
 
 ensure_dashboard_dependencies() {
@@ -190,6 +207,28 @@ PY
 
     warn "Dashboard process exited early — see ${DASHBOARD_LOG_FILE}"
     rm -f "${DASHBOARD_PID_FILE}"
+    return 1
+}
+
+start_reconciler() {
+    if ! [[ "${RECONCILE_INTERVAL_SECS}" =~ ^[0-9]+$ ]] || [[ "${RECONCILE_INTERVAL_SECS}" -lt 1 ]]; then
+        warn "Invalid supervisor.status_reconcile_interval_secs=${RECONCILE_INTERVAL_SECS}; skipping reconciler"
+        return 1
+    fi
+
+    stop_reconciler_if_running
+
+    nohup bash "${SCRIPT_DIR}/reconcile-loop.sh" "${RECONCILE_INTERVAL_SECS}" >"${RECONCILE_LOG_FILE}" 2>&1 &
+    local pid=$!
+    echo "${pid}" > "${RECONCILE_PID_FILE}"
+
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+        log "Status reconciler started (${RECONCILE_INTERVAL_SECS}s cadence)"
+        return 0
+    fi
+
+    warn "Status reconciler failed to stay running"
+    rm -f "${RECONCILE_PID_FILE}"
     return 1
 }
 
@@ -286,8 +325,16 @@ nohup "${SUPERVISOR_SEED_ARGS[@]}" >/dev/null 2>&1 &
 log "Supervisor seeded (heartbeat + cron will keep it active)"
 echo ""
 
-# --- Step 6: Start dashboard ---
-echo "--- Step 6: Dashboard ---"
+# --- Step 6: Start status reconciler ---
+echo "--- Step 6: Status Reconciler ---"
+RECONCILER_STARTED=0
+if start_reconciler; then
+    RECONCILER_STARTED=1
+fi
+echo ""
+
+# --- Step 7: Start dashboard ---
+echo "--- Step 7: Dashboard ---"
 DASHBOARD_STARTED=0
 if start_dashboard; then
     DASHBOARD_STARTED=1
@@ -316,6 +363,9 @@ if [[ "${DASHBOARD_STARTED}" -eq 1 ]]; then
 else
     warn "FleetClaw dashboard was not started automatically"
 fi
+if [[ "${RECONCILER_STARTED}" -ne 1 ]]; then
+    warn "Status reconciler was not started automatically"
+fi
 info "OpenClaw UI: ${OPENCLAW_UI_URL}"
 echo ""
 echo "Agent sessions:"
@@ -331,6 +381,7 @@ echo "  ${OPENCLAW_CMD[*]} gateway status      # Check gateway health"
 echo "  ${OPENCLAW_CMD[*]} agents list          # List registered agents"
 echo "  ${OPENCLAW_CMD[*]} cron list            # List cron jobs"
 echo "  tail -f ${DASHBOARD_LOG_FILE}           # Watch dashboard log"
+echo "  tail -f ${RECONCILE_LOG_FILE}           # Watch status reconciler log"
 echo "  ${OPENCLAW_CMD[*]} agent --agent ${SUPERVISOR_RUNTIME_ID} --message \"Check progress now\""
 echo ""
 echo "  Watch supervisor:"

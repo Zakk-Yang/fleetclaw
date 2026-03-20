@@ -35,6 +35,7 @@ sequenceDiagram
 - The supervisor wakes on a schedule, reviews checkpoints plus git state, and sends the next decision
 
 Heartbeat keeps agent sessions alive between checks, and supervisor cron jobs trigger regular review cycles.
+FleetClaw also runs a small status reconciler that can normalize stale `STATUS.md` files after a recorded supervisor acceptance.
 
 ## Quick Start
 
@@ -63,6 +64,7 @@ project:
 supervisor:
   objective_file: "prompts/supervisor-objective.md"
   handoff_rules_file: "prompts/handoff-rules.md"
+  status_reconcile_interval_secs: 30
 
 agents:
   - id: "frontend"
@@ -84,6 +86,7 @@ Relative `*_file` paths resolve from the `fleetclaw/` directory.
 - **OpenClaw UI**: http://localhost:{port}/ (port shown after launch)
 - **FleetClaw Dashboard**: starts automatically during `launch.sh` at http://localhost:{dashboard_port}
 - The dashboard now shows both estimated Markdown read-set percentages and live session context usage percentages
+- FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
 
 ## Authoring Model
 
@@ -127,6 +130,7 @@ your-project/
 - Agents update STATUS.md after each logical unit of work
 - Supervisor reads STATUS.md + git diff to make decisions
 - Decisions: `CONTINUE`, `REDIRECT`, `STOP`, `ACCEPT_DONE`, `ESCALATE`
+- If the agent misses an `ACCEPT_DONE` update, FleetClaw reconciles the checkpoint from recorded session history instead of waiting forever
 - Heartbeat (2 min) keeps agents alive via the gateway — no timeout deaths
 - Supervisor cron (configurable) runs periodic review cycles
 
@@ -136,6 +140,8 @@ your-project/
 |--------|---------|
 | `check-markdown-budget.sh` | Estimate the Markdown read-set load for supervisor/agents as a % of the context window |
 | `check-context.sh` | Show live session token usage and context pressure from OpenClaw |
+| `reconcile-status.sh` | Reconcile stale agent checkpoints from recorded supervisor decisions |
+| `reconcile-loop.sh` | Background loop that runs `reconcile-status.sh` automatically after launch |
 | `setup.sh` | Parse scope, create agent dirs, generate OpenClaw config, cron jobs |
 | `launch.sh` | Start gateway, dashboard, install crons, enable heartbeat, seed sessions |
 | `status-report.sh` | Print agent checkpoints, supervisor notes, markdown budget, and live context usage |

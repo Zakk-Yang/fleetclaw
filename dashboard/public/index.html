@@ -6,148 +6,532 @@
 <title>FleetClaw Dashboard</title>
 <style>
   :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --surface-alt: #10161f;
-    --border: #30363d;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent: #58a6ff;
-    --green: #3fb950;
-    --yellow: #d29922;
-    --red: #f85149;
+    --bg: #0a0f16;
+    --surface: #101822;
+    --surface-2: #152131;
+    --surface-3: #0d141d;
+    --border: #243244;
+    --text: #eef4fb;
+    --muted: #91a0b3;
+    --accent: #72d0ff;
+    --blue: #4d86ff;
+    --green: #46d483;
+    --yellow: #f0c45a;
+    --red: #ff7870;
+    --purple: #c7a9ff;
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(77, 134, 255, 0.18), transparent 30%),
+      radial-gradient(circle at top right, rgba(114, 208, 255, 0.12), transparent 26%),
+      linear-gradient(180deg, #081018 0%, #0a0f16 100%);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
   .header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: blur(18px);
+    background: rgba(10, 15, 22, 0.84);
+    border-bottom: 1px solid rgba(145, 160, 179, 0.12);
+  }
+
+  .header__inner {
+    max-width: 1520px;
+    margin: 0 auto;
+    padding: 18px 24px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
     flex-wrap: wrap;
   }
-  .header h1 { font-size: 18px; font-weight: 600; }
-  .header .tag { font-size: 12px; background: var(--border); padding: 2px 8px; border-radius: 999px; color: var(--muted); }
-  .header .refresh-btn {
-    margin-left: auto;
-    background: var(--border);
-    border: none;
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand__mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(77, 134, 255, 0.92), rgba(114, 208, 255, 0.92));
+    color: #081018;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 18px;
+  }
+
+  .brand h1 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .brand p,
+  .header__meta,
+  .eyebrow,
+  .subtle,
+  .field-label,
+  .stat-label,
+  .lane-card__meta,
+  .role-meta,
+  .decision-subtitle,
+  .table-note {
+    color: var(--muted);
+  }
+
+  .brand p,
+  .header__meta,
+  .subtle,
+  .lane-card__meta,
+  .role-meta,
+  .decision-subtitle,
+  .table-note {
+    font-size: 12px;
+  }
+
+  .header__spacer { flex: 1; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(145, 160, 179, 0.18);
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .refresh-btn {
+    border: 1px solid rgba(114, 208, 255, 0.22);
+    background: rgba(114, 208, 255, 0.08);
     color: var(--text);
-    padding: 6px 12px;
-    border-radius: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
     cursor: pointer;
     font-size: 13px;
   }
-  .header .refresh-btn:hover { background: var(--accent); color: #000; }
-  .auto-refresh { font-size: 11px; color: var(--muted); }
 
-  .container { max-width: 1440px; margin: 0 auto; padding: 20px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-  .grid-full { grid-column: 1 / -1; }
+  .refresh-btn:hover {
+    background: rgba(114, 208, 255, 0.18);
+  }
 
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .card-header h2 { font-size: 14px; font-weight: 600; }
-  .card-body { padding: 16px; }
-  .card-body pre {
+  .container {
+    max-width: 1520px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    gap: 20px;
+  }
+
+  .card {
+    background: linear-gradient(180deg, rgba(16, 24, 34, 0.96), rgba(13, 20, 29, 0.96));
+    border: 1px solid rgba(145, 160, 179, 0.14);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+
+  .card-header {
+    padding: 16px 18px;
+    border-bottom: 1px solid rgba(145, 160, 179, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .card-header h2 {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .card-body {
+    padding: 18px;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.8fr);
+    gap: 16px;
+  }
+
+  .hero-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top right, rgba(114, 208, 255, 0.12), transparent 28%),
+      radial-gradient(circle at bottom left, rgba(77, 134, 255, 0.14), transparent 30%);
+    pointer-events: none;
+  }
+
+  .hero-card .card-body {
+    position: relative;
+    display: grid;
+    gap: 18px;
+  }
+
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .hero-title {
+    display: grid;
+    gap: 8px;
+  }
+
+  .hero-title h2 {
+    font-size: clamp(1.8rem, 4vw, 2.9rem);
+    line-height: 1.02;
+    max-width: 12ch;
+  }
+
+  .hero-title p {
+    max-width: 62ch;
+    color: #d8e1ec;
+  }
+
+  .hero-links {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .link-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(114, 208, 255, 0.22);
+    background: rgba(114, 208, 255, 0.08);
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .hero-review {
+    display: grid;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(6, 11, 18, 0.38);
+    border: 1px solid rgba(145, 160, 179, 0.12);
+  }
+
+  .hero-review code,
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  .summary-card .card-body,
+  .support-grid,
+  .lane-grid,
+  .role-stack {
+    display: grid;
+    gap: 14px;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .stat {
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 160, 179, 0.12);
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .lane-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .lane-card {
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 160, 179, 0.12);
+    display: grid;
+    gap: 10px;
+  }
+
+  .lane-card__top {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .lane-card h3 {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .lane-card__summary {
+    color: #d7e0ea;
+    font-size: 13px;
+  }
+
+  .lane-card__decision {
+    padding-top: 10px;
+    border-top: 1px solid rgba(145, 160, 179, 0.12);
+    display: grid;
+    gap: 4px;
+  }
+
+  .status-badge,
+  .usage-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .status-working { background: rgba(70, 212, 131, 0.14); color: var(--green); }
+  .status-blocked { background: rgba(255, 120, 112, 0.14); color: var(--red); }
+  .status-done { background: rgba(77, 134, 255, 0.14); color: #8eb1ff; }
+  .status-ready-for-review { background: rgba(240, 196, 90, 0.15); color: var(--yellow); }
+  .status-monitoring { background: rgba(199, 169, 255, 0.16); color: var(--purple); }
+  .status-unknown { background: rgba(145, 160, 179, 0.18); color: var(--muted); }
+
+  .usage-ok { background: rgba(70, 212, 131, 0.14); color: var(--green); }
+  .usage-warning { background: rgba(240, 196, 90, 0.15); color: var(--yellow); }
+  .usage-compact { background: rgba(255, 120, 112, 0.14); color: var(--red); }
+
+  .role-section .card-header {
+    align-items: start;
+    justify-content: space-between;
+  }
+
+  .role-title {
+    display: grid;
+    gap: 6px;
+  }
+
+  .role-title h2 {
+    font-size: 18px;
+  }
+
+  .role-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
+    gap: 16px;
+  }
+
+  .role-main,
+  .role-side {
+    display: grid;
+    gap: 14px;
+  }
+
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .overview-box,
+  .decision-box,
+  .runtime-box {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 160, 179, 0.12);
+    display: grid;
+    gap: 8px;
+  }
+
+  .overview-box strong,
+  .decision-box strong,
+  .runtime-box strong {
+    font-size: 13px;
+  }
+
+  .field-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .field-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+
+  .field-label {
+    min-width: 140px;
+  }
+
+  .field-value {
+    color: var(--text);
+    flex: 1;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .tab {
+    border: 1px solid rgba(145, 160, 179, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .tab.active {
+    color: var(--text);
+    border-color: rgba(114, 208, 255, 0.28);
+    background: rgba(114, 208, 255, 0.12);
+  }
+
+  .tab-content {
+    display: none;
+    margin-top: 14px;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  pre {
     font-size: 12px;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
-    color: var(--muted);
-    max-height: 400px;
+    color: #cfd9e4;
+    max-height: 420px;
     overflow-y: auto;
   }
 
-  .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 180px; flex: 1; }
-  .kpi .label { font-size: 11px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.5px; }
-  .kpi .value { font-size: 22px; font-weight: 600; }
-  .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  .status-badge,
-  .usage-badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
+  .decision-box pre,
+  .message-box pre {
+    max-height: none;
   }
-  .status-working { background: #1a3a1a; color: var(--green); }
-  .status-blocked { background: #3a1a1a; color: var(--red); }
-  .status-done { background: #1a2a3a; color: var(--accent); }
-  .status-ready-for-review { background: #2a2a1a; color: var(--yellow); }
-  .status-unknown { background: var(--border); color: var(--muted); }
-  .usage-ok { background: #1a3a1a; color: var(--green); }
-  .usage-warning { background: #2a2a1a; color: var(--yellow); }
-  .usage-compact { background: #3a1a1a; color: var(--red); }
 
-  .agent-card { margin-bottom: 12px; }
-  .agent-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .agent-header h3 { font-size: 15px; }
-  .agent-meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
-
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 12px 0 0 0; flex-wrap: wrap; }
-  .tab {
-    padding: 8px 16px;
-    font-size: 12px;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    color: var(--muted);
-    background: none;
-    border-top: none;
-    border-left: none;
-    border-right: none;
+  .support-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
   }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab-content { display: none; padding: 12px 0; }
-  .tab-content.active { display: block; }
 
-  .field-row { display: flex; gap: 8px; margin-bottom: 4px; font-size: 13px; flex-wrap: wrap; }
-  .field-label { color: var(--muted); min-width: 160px; }
-  .field-value { color: var(--text); }
-  .subtle { color: var(--muted); font-size: 12px; }
-  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin: 14px 0 6px 0; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+  .support-stack {
+    display: grid;
+    gap: 16px;
+  }
 
   .table-wrap { overflow-x: auto; }
-  table.metrics-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+  table.metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
   .metrics-table th,
   .metrics-table td {
-    padding: 6px 8px;
-    border-top: 1px solid var(--border);
+    padding: 8px 10px;
+    border-top: 1px solid rgba(145, 160, 179, 0.12);
     text-align: left;
     vertical-align: top;
   }
-  .metrics-table th { color: var(--muted); font-weight: 600; }
-  .metrics-table td.right,
-  .metrics-table th.right { text-align: right; }
 
-  @media (max-width: 900px) {
-    .grid { grid-template-columns: 1fr; }
-    .header .refresh-btn { margin-left: 0; }
+  .metrics-table th {
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .metrics-table td.right,
+  .metrics-table th.right {
+    text-align: right;
+  }
+
+  @media (max-width: 1120px) {
+    .summary-grid,
+    .role-layout,
+    .support-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 820px) {
+    .stat-grid,
+    .overview-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .container,
+    .header__inner {
+      padding: 18px;
+    }
   }
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>FleetClaw</h1>
-  <span class="tag" id="project-name">loading...</span>
-  <span class="auto-refresh" id="last-update"></span>
-  <button class="refresh-btn" onclick="refresh()">Refresh</button>
-</div>
+<header class="header">
+  <div class="header__inner">
+    <div class="brand">
+      <div class="brand__mark">FC</div>
+      <div>
+        <h1>FleetClaw Dashboard</h1>
+        <p id="header-subtitle">Project status review</p>
+      </div>
+    </div>
+    <span class="tag" id="project-name">loading...</span>
+    <span class="header__meta" id="last-update"></span>
+    <div class="header__spacer"></div>
+    <button class="refresh-btn" onclick="refresh()">Refresh</button>
+  </div>
+</header>
 
-<div class="container">
-  <div class="kpi-row" id="kpis"></div>
-  <div class="grid" id="main-grid"></div>
-</div>
+<main class="container">
+  <section id="summary"></section>
+  <section id="role-sections" class="role-stack"></section>
+  <section id="support"></section>
+</main>
 
 <script>
 let dashboardData = null;
@@ -161,6 +545,14 @@ async function fetchAll() {
   render();
 }
 
+function esc(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function statusClass(state) {
   if (!state) return 'status-unknown';
   const value = state.toLowerCase();
@@ -168,21 +560,24 @@ function statusClass(state) {
   if (value === 'blocked') return 'status-blocked';
   if (value === 'done') return 'status-done';
   if (value.includes('review')) return 'status-ready-for-review';
+  if (value.includes('monitor')) return 'status-monitoring';
   return 'status-unknown';
+}
+
+function decisionClass(decision) {
+  if (!decision) return 'status-unknown';
+  const value = decision.toUpperCase();
+  if (value === 'ACCEPT_DONE') return 'status-done';
+  if (value === 'STOP') return 'status-blocked';
+  if (value === 'REDIRECT') return 'status-ready-for-review';
+  if (value === 'CONTINUE') return 'status-working';
+  return 'status-monitoring';
 }
 
 function usageClass(status) {
   if (status === 'COMPACT NOW') return 'usage-compact';
   if (status === 'WARNING') return 'usage-warning';
   return 'usage-ok';
-}
-
-function esc(value) {
-  if (value === null || value === undefined) return '';
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
 
 function fmtPct(value) {
@@ -196,9 +591,21 @@ function fmtInt(value) {
   return number.toLocaleString();
 }
 
+function fmtTime(value) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return esc(value);
+  return parsed.toLocaleString();
+}
+
 function renderUsageBadge(status) {
   if (!status) return '<span class="usage-badge status-unknown">unknown</span>';
   return `<span class="usage-badge ${usageClass(status)}">${esc(status)}</span>`;
+}
+
+function renderStatusBadge(state) {
+  const label = state || 'unknown';
+  return `<span class="status-badge ${statusClass(label)}">${esc(label)}</span>`;
 }
 
 function renderBudgetSummary(budget) {
@@ -211,10 +618,20 @@ function renderSessionSummary(session) {
   return `${fmtPct(session.usagePct)} (${fmtInt(session.totalTokens)} / ${fmtInt(session.contextTokens)})`;
 }
 
+function firstMeaningfulLine(text) {
+  if (!text) return '';
+  const lines = String(text).split('\n').map((line) => line.trim()).filter(Boolean);
+  return lines.find((line) => !line.startsWith('SUPERVISOR_DECISION:') && !line.startsWith('[') && !line.startsWith('#')) || lines[0] || '';
+}
+
+function renderDecisionSummary(decision) {
+  if (!decision) return 'No recorded supervisor instruction yet.';
+  const detail = firstMeaningfulLine(decision.text);
+  return `${esc(decision.decision)}${detail ? ` · ${esc(detail.replace(/^-+\s*/, ''))}` : ''}`;
+}
+
 function renderMarkdownTable(rows) {
-  if (!rows.length) {
-    return '<div class="subtle">No markdown budget data yet.</div>';
-  }
+  if (!rows.length) return '<div class="subtle">No markdown budget data yet.</div>';
 
   const body = rows.map((row) => `
     <tr>
@@ -245,9 +662,7 @@ function renderMarkdownTable(rows) {
 }
 
 function renderLiveTable(rows) {
-  if (!rows.length) {
-    return '<div class="subtle">No live sessions are reporting token usage yet.</div>';
-  }
+  if (!rows.length) return '<div class="subtle">No live sessions are reporting token usage yet.</div>';
 
   const body = rows.map((row) => `
     <tr>
@@ -265,7 +680,7 @@ function renderLiveTable(rows) {
       <table class="metrics-table">
         <thead>
           <tr>
-            <th>Agent</th>
+            <th>Role</th>
             <th>Session</th>
             <th class="right">Tokens</th>
             <th class="right">Limit</th>
@@ -280,9 +695,7 @@ function renderLiveTable(rows) {
 }
 
 function renderCronTable(rows) {
-  if (!rows || !rows.length) {
-    return '<div class="subtle">No supervisor cron runs are reporting token usage yet.</div>';
-  }
+  if (!rows.length) return '<div class="subtle">No supervisor cron runs are reporting token usage yet.</div>';
 
   const body = rows.map((row) => `
     <tr>
@@ -299,7 +712,7 @@ function renderCronTable(rows) {
       <table class="metrics-table">
         <thead>
           <tr>
-            <th>Run</th>
+            <th>Cron run</th>
             <th class="right">Tokens</th>
             <th class="right">Limit</th>
             <th class="right">Usage</th>
@@ -312,6 +725,363 @@ function renderCronTable(rows) {
   `;
 }
 
+function renderTabs(sectionId, tabs) {
+  const buttons = tabs.map((tab, index) => `
+    <button class="tab ${index === 0 ? 'active' : ''}" data-pane="${esc(tab.key)}">${esc(tab.label)}</button>
+  `).join('');
+
+  const panes = tabs.map((tab, index) => `
+    <div class="tab-content ${index === 0 ? 'active' : ''}" data-role-tabs="${esc(sectionId)}" data-pane="${esc(tab.key)}">
+      ${tab.content}
+    </div>
+  `).join('');
+
+  return `
+    <div class="tabs" data-tabs="${esc(sectionId)}">${buttons}</div>
+    ${panes}
+  `;
+}
+
+function renderLaneCard(role) {
+  return `
+    <article class="lane-card">
+      <div class="lane-card__top">
+        <div>
+          <h3>${esc(role.title)}</h3>
+          <div class="lane-card__meta">${esc(role.meta)}</div>
+        </div>
+        ${renderStatusBadge(role.state)}
+      </div>
+      <div class="lane-card__summary">${esc(role.summary)}</div>
+      <div class="lane-card__meta">Context: ${esc(role.context)}</div>
+      <div class="lane-card__decision">
+        <strong>${esc(role.decisionTitle)}</strong>
+        <div class="lane-card__meta">${role.decisionBody}</div>
+      </div>
+    </article>
+  `;
+}
+
+function renderAgentSection(agent) {
+  const state = agent.statusFields.state || 'unknown';
+  const tabs = [
+    {
+      key: 'status',
+      label: 'STATUS',
+      content: `<pre>${esc(agent.files.status || 'No STATUS.md')}</pre>`,
+    },
+    {
+      key: 'supervisor',
+      label: 'Supervisor',
+      content: agent.latestSupervisorDecision
+        ? `<div class="message-box"><pre>${esc(agent.latestSupervisorDecision.text)}</pre></div>`
+        : '<div class="subtle">No recorded supervisor decision yet.</div>',
+    },
+    {
+      key: 'brief',
+      label: 'BRIEF',
+      content: `<pre>${esc(agent.files.brief || 'No BRIEF.md')}</pre>`,
+    },
+    {
+      key: 'plan',
+      label: 'PLAN',
+      content: `<pre>${esc(agent.files.plan || 'No PLAN.md yet')}</pre>`,
+    },
+    {
+      key: 'memory',
+      label: 'MEMORY',
+      content: `<pre>${esc(agent.files.memory || 'No MEMORY.md')}</pre>`,
+    },
+    {
+      key: 'soul',
+      label: 'SOUL',
+      content: `<pre>${esc(agent.files.soul || 'No SOUL.md')}</pre>`,
+    },
+  ];
+
+  return `
+    <section class="card role-section">
+      <div class="card-header">
+        <div class="role-title">
+          <div class="eyebrow">Agent lane</div>
+          <h2>${esc(agent.id)}</h2>
+          <div class="role-meta">Model: ${esc(agent.model)} · Thinking: ${esc(agent.thinking)} · Focus: ${esc(agent.focusDirs.join(', ') || '-')}</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          ${renderStatusBadge(state)}
+          ${agent.sessionUrl ? `<a class="link-pill" href="${esc(agent.sessionUrl)}" target="_blank">Open session</a>` : ''}
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="role-layout">
+          <div class="role-main">
+            <div class="overview-grid">
+              <div class="overview-box">
+                <strong>Checkpoint</strong>
+                <div class="field-list">
+                  <div class="field-row"><span class="field-label">Summary</span><span class="field-value">${esc(agent.statusFields.summary || '-')}</span></div>
+                  <div class="field-row"><span class="field-label">Next step</span><span class="field-value">${esc(agent.statusFields['next step'] || '-')}</span></div>
+                  <div class="field-row"><span class="field-label">Blocker</span><span class="field-value">${esc(agent.statusFields.blocker || 'none')}</span></div>
+                </div>
+              </div>
+              <div class="overview-box">
+                <strong>Current review state</strong>
+                <div class="field-list">
+                  <div class="field-row"><span class="field-label">Tests</span><span class="field-value">${esc(agent.statusFields.tests || '-')}</span></div>
+                  <div class="field-row"><span class="field-label">Decision needed</span><span class="field-value">${esc(agent.statusFields['needs supervisor decision'] || 'no')}</span></div>
+                  <div class="field-row"><span class="field-label">Last updated</span><span class="field-value">${esc(agent.statusFields['last updated'] || '-')}</span></div>
+                </div>
+              </div>
+            </div>
+            ${renderTabs(`agent-${agent.id}`, tabs)}
+          </div>
+          <div class="role-side">
+            <div class="decision-box">
+              <strong>Latest supervisor instruction</strong>
+              ${agent.latestSupervisorDecision ? `
+                <div><span class="status-badge ${decisionClass(agent.latestSupervisorDecision.decision)}">${esc(agent.latestSupervisorDecision.decision)}</span></div>
+                <div class="decision-subtitle">Sent ${fmtTime(agent.latestSupervisorDecision.sentAt)}</div>
+                <pre>${esc(agent.latestSupervisorDecision.text)}</pre>
+              ` : '<div class="subtle">No recorded instruction yet.</div>'}
+            </div>
+            <div class="runtime-box">
+              <strong>Runtime</strong>
+              <div class="field-list">
+                <div class="field-row"><span class="field-label">Main session</span><span class="field-value">${renderSessionSummary(agent.mainSession)}</span></div>
+                <div class="field-row"><span class="field-label">Instruction load</span><span class="field-value">${renderBudgetSummary(agent.instructionBudget)}</span></div>
+                <div class="field-row"><span class="field-label">Files touched</span><span class="field-value">${esc(agent.statusFields['files touched'] || '-')}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSupervisorSection(supervisor, projectData) {
+  const tabs = [
+    {
+      key: 'memory',
+      label: 'Latest memory',
+      content: `<pre>${esc(supervisor.latestMemory || 'No memory logs yet')}</pre>`,
+    },
+    {
+      key: 'roster',
+      label: 'ROSTER',
+      content: `<pre>${esc(supervisor.roster || 'No ROSTER.md')}</pre>`,
+    },
+    {
+      key: 'status',
+      label: 'STATUS',
+      content: `<pre>${esc(supervisor.status || 'No STATUS.md')}</pre>`,
+    },
+  ];
+
+  return `
+    <section class="card role-section">
+      <div class="card-header">
+        <div class="role-title">
+          <div class="eyebrow">Supervisor</div>
+          <h2>Supervisor</h2>
+          <div class="role-meta">Checks every ${esc(projectData.supervisor.checkInterval)} minutes · Reconciles every ${esc(projectData.supervisor.statusReconcileIntervalSecs)} seconds</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          ${renderStatusBadge('monitoring')}
+          ${supervisor.sessionUrl ? `<a class="link-pill" href="${esc(supervisor.sessionUrl)}" target="_blank">Open session</a>` : ''}
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="role-layout">
+          <div class="role-main">
+            <div class="overview-grid">
+              <div class="overview-box">
+                <strong>Control loop</strong>
+                <div class="field-list">
+                  <div class="field-row"><span class="field-label">Main session</span><span class="field-value">${renderSessionSummary(supervisor.mainSession)}</span></div>
+                  <div class="field-row"><span class="field-label">Instruction load</span><span class="field-value">${supervisor.instructionBudget?.coreLoop && supervisor.instructionBudget?.withShared ? `${fmtPct(supervisor.instructionBudget.coreLoop.usagePct)} core / ${fmtPct(supervisor.instructionBudget.withShared.usagePct)} with shared` : 'No budget snapshot yet'}</span></div>
+                </div>
+              </div>
+              <div class="overview-box">
+                <strong>Recent cron runs</strong>
+                ${renderCronTable(supervisor.cronSessions || [])}
+              </div>
+            </div>
+            ${renderTabs('supervisor', tabs)}
+          </div>
+          <div class="role-side">
+            <div class="decision-box">
+              <strong>Latest supervision note</strong>
+              <pre>${esc(supervisor.latestMemory || 'No memory logs yet')}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSupport(projectData, metrics) {
+  const changedFiles = projectData.git.modifiedFiles || projectData.git.changedFiles || [];
+  const untrackedCount = Number(projectData.git.untrackedCount || 0);
+
+  const changedHtml = changedFiles.length > 0
+    ? `
+      <div class="table-wrap">
+        <table class="metrics-table">
+          <thead>
+            <tr>
+              <th>Modified</th>
+              <th>File</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${changedFiles.map((file) => {
+              const state = `${file.indexStatus || ''}${file.worktreeStatus || ''}`.trim();
+              const time = file.mtime ? new Date(file.mtime).toLocaleTimeString() : '-';
+              return `
+                <tr>
+                  <td class="mono">${esc(time)}</td>
+                  <td>${esc(file.file)}</td>
+                  <td><span class="status-badge status-ready-for-review">${esc(state || 'modified')}</span></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${projectData.git.diffSummary ? `<div class="table-note">${esc(projectData.git.diffSummary)}</div>` : ''}
+    `
+    : '<div class="subtle">No tracked file modifications.</div>';
+
+  return `
+    <div class="support-grid">
+      <div class="support-stack">
+        <section class="card">
+          <div class="card-header"><h2>Context budget</h2></div>
+          <div class="card-body">
+            <div class="field-row"><span class="field-label">Instruction estimate</span><span class="field-value">${esc(metrics.markdown?.estimator || 'chars/4')} against ${fmtInt(metrics.markdown?.contextLimit || 0)} tokens</span></div>
+            <div class="field-row"><span class="field-label">Compaction threshold</span><span class="field-value">${fmtPct(metrics.live?.threshold || 0)}</span></div>
+            <div class="eyebrow" style="margin-top:12px;">Markdown read sets</div>
+            ${renderMarkdownTable(metrics.markdown?.rows || [])}
+            <div class="eyebrow" style="margin-top:16px;">Live session usage</div>
+            ${renderLiveTable(metrics.live?.rows || [])}
+          </div>
+        </section>
+      </div>
+      <div class="support-stack">
+        <section class="card">
+          <div class="card-header"><h2>Git</h2></div>
+          <div class="card-body">
+            <pre>${esc(projectData.git.log || 'No git history yet')}</pre>
+            <div class="eyebrow" style="margin-top:12px;">Modified files (${changedFiles.length})</div>
+            ${changedHtml}
+            ${untrackedCount > 0 ? `<div class="table-note">Hidden untracked files: ${esc(String(untrackedCount))}</div>` : ''}
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+}
+
+function renderSummary(projectData, agents, supervisor, metrics) {
+  const doneCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase() === 'done').length;
+  const workingCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase() === 'working').length;
+  const reviewCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase().includes('review')).length;
+  const blockedCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase() === 'blocked').length;
+  const pendingDecisionCount = agents.filter((agent) => (agent.statusFields['needs supervisor decision'] || '').toLowerCase() === 'yes').length;
+  const changedFiles = projectData.git.modifiedFiles || projectData.git.changedFiles || [];
+
+  const openclawLinks = [
+    projectData.gateway.openclawUrl ? `<a class="link-pill" href="${esc(projectData.gateway.openclawUrl)}" target="_blank">Open OpenClaw UI</a>` : '',
+    supervisor.sessionUrl ? `<a class="link-pill" href="${esc(supervisor.sessionUrl)}" target="_blank">Open supervisor chat</a>` : '',
+    projectData.review?.url ? `<a class="link-pill" href="${esc(projectData.review.url)}" target="_blank">Open review surface</a>` : '',
+  ].filter(Boolean).join('');
+
+  const laneCards = [];
+  laneCards.push(renderLaneCard({
+    title: 'Supervisor',
+    meta: `${projectData.supervisor.model} · every ${projectData.supervisor.checkInterval}m`,
+    state: 'monitoring',
+    summary: firstMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.',
+    context: renderSessionSummary(supervisor.mainSession),
+    decisionTitle: 'Role',
+    decisionBody: 'Reviews checkpoints, inspects git state, and routes the next decision.',
+  }));
+
+  for (const agent of agents) {
+    laneCards.push(renderLaneCard({
+      title: agent.id,
+      meta: `${agent.focusDirs.join(', ') || 'shared workspace'} · ${agent.statusFields['last updated'] || 'no checkpoint'}`,
+      state: agent.statusFields.state || 'unknown',
+      summary: agent.statusFields.summary || 'No summary yet.',
+      context: renderSessionSummary(agent.mainSession),
+      decisionTitle: 'Latest supervisor instruction',
+      decisionBody: renderDecisionSummary(agent.latestSupervisorDecision),
+    }));
+  }
+
+  return `
+    <div class="summary-grid">
+      <section class="card hero-card">
+        <div class="card-body">
+          <div class="hero-title">
+            <div class="eyebrow">Project summary</div>
+            <h2>${esc(projectData.name)}</h2>
+            <p>${esc(projectData.description || 'FleetClaw coordination dashboard for this project.')}</p>
+          </div>
+          <div class="hero-links">${openclawLinks || '<span class="subtle">No links configured.</span>'}</div>
+          <div class="hero-review">
+            <div class="field-row"><span class="field-label">Primary review URL</span><span class="field-value">${projectData.review?.url ? `<a href="${esc(projectData.review.url)}" target="_blank">${esc(projectData.review.url)}</a>` : '-'}</span></div>
+            <div class="field-row"><span class="field-label">Primary review command</span><span class="field-value mono">${esc(projectData.review?.command || '-')}</span></div>
+            <div class="field-row"><span class="field-label">Design review command</span><span class="field-value mono">${esc(projectData.review?.designCommand || '-')}</span></div>
+            <div class="field-row"><span class="field-label">Notes</span><span class="field-value">${esc(projectData.review?.notes || '-')}</span></div>
+          </div>
+        </div>
+      </section>
+      <section class="card summary-card">
+        <div class="card-header"><h2>Fleet summary</h2></div>
+        <div class="card-body">
+          <div class="stat-grid">
+            <div class="stat"><div class="stat-value">${doneCount}</div><div class="stat-label">Done agents</div></div>
+            <div class="stat"><div class="stat-value">${workingCount}</div><div class="stat-label">Working agents</div></div>
+            <div class="stat"><div class="stat-value">${reviewCount}</div><div class="stat-label">Ready for review</div></div>
+            <div class="stat"><div class="stat-value">${blockedCount}</div><div class="stat-label">Blocked agents</div></div>
+            <div class="stat"><div class="stat-value">${pendingDecisionCount}</div><div class="stat-label">Pending supervisor decisions</div></div>
+            <div class="stat"><div class="stat-value">${fmtPct(metrics.live?.maxUsagePct || 0)}</div><div class="stat-label">Max live context</div></div>
+            <div class="stat"><div class="stat-value">${fmtPct(metrics.markdown?.maxUsagePct || 0)}</div><div class="stat-label">Max instruction load</div></div>
+            <div class="stat"><div class="stat-value">${changedFiles.length}</div><div class="stat-label">Tracked modifications</div></div>
+          </div>
+          <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)}</div>
+        </div>
+      </section>
+    </div>
+    <section class="card">
+      <div class="card-header"><h2>Role snapshot</h2></div>
+      <div class="card-body">
+        <div class="lane-grid">${laneCards.join('')}</div>
+      </div>
+    </section>
+  `;
+}
+
+function wireTabs() {
+  document.querySelectorAll('[data-tabs]').forEach((tabBar) => {
+    tabBar.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const sectionId = tabBar.dataset.tabs;
+        const pane = tab.dataset.pane;
+        tabBar.querySelectorAll('.tab').forEach((button) => button.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelectorAll(`[data-role-tabs="${sectionId}"]`).forEach((content) => {
+          content.classList.toggle('active', content.dataset.pane === pane);
+        });
+      });
+    });
+  });
+}
+
 function render() {
   const projectData = dashboardData.project;
   const agents = dashboardData.agents || [];
@@ -319,199 +1089,26 @@ function render() {
   const metrics = dashboardData.metrics || { markdown: { rows: [] }, live: { rows: [] } };
 
   document.getElementById('project-name').textContent = projectData.name;
-  document.title = `FleetClaw - ${projectData.name}`;
   document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  document.getElementById('header-subtitle').textContent = `${agents.length} coding agents · supervisor checks every ${projectData.supervisor.checkInterval} minutes`;
+  document.title = `FleetClaw - ${projectData.name}`;
 
-  const working = agents.filter((agent) => agent.statusFields.state === 'working').length;
-  const blocked = agents.filter((agent) => agent.statusFields.state === 'blocked').length;
-  const commitCount = projectData.git.log ? projectData.git.log.split('\n').filter(Boolean).length : 0;
-  const maxLive = metrics.live?.maxUsagePct || 0;
-  const maxMarkdown = metrics.markdown?.maxUsagePct || 0;
+  document.getElementById('summary').innerHTML = renderSummary(projectData, agents, supervisor, metrics);
+  document.getElementById('role-sections').innerHTML = [
+    renderSupervisorSection(supervisor, projectData),
+    ...agents.map(renderAgentSection),
+  ].join('');
+  document.getElementById('support').innerHTML = renderSupport(projectData, metrics);
 
-  document.getElementById('kpis').innerHTML = `
-    <div class="kpi">
-      <div class="label">Agents</div>
-      <div class="value">${agents.length}</div>
-      <div class="sub">${working} working, ${blocked} blocked</div>
-    </div>
-    <div class="kpi">
-      <div class="label">Supervisor</div>
-      <div class="value">Every ${esc(projectData.supervisor.checkInterval)}m</div>
-      <div class="sub">${esc(projectData.supervisor.model)}</div>
-    </div>
-    <div class="kpi">
-      <div class="label">Max Live Context</div>
-      <div class="value">${fmtPct(maxLive)}</div>
-      <div class="sub">Threshold ${fmtPct(metrics.live?.threshold || 0)}</div>
-    </div>
-    <div class="kpi">
-      <div class="label">Max Instruction Load</div>
-      <div class="value">${fmtPct(maxMarkdown)}</div>
-      <div class="sub">${esc(metrics.markdown?.estimator || 'chars/4')} estimate</div>
-    </div>
-    <div class="kpi">
-      <div class="label">Git Branch</div>
-      <div class="value">${esc(projectData.git.branch)}</div>
-      <div class="sub">${commitCount} recent commits</div>
-    </div>
-    <div class="kpi">
-      <div class="label">Dashboard</div>
-      <div class="value">:${esc(projectData.dashboard.port)}</div>
-      <div class="sub"><a href="${esc(projectData.dashboard.url)}" target="_blank">Open dashboard</a></div>
-    </div>
-  `;
-
-  const openclawLinks = [
-    projectData.gateway.openclawUrl ? `<a href="${projectData.gateway.openclawUrl}" target="_blank">Open OpenClaw UI</a>` : '',
-    supervisor.sessionUrl ? `<a href="${supervisor.sessionUrl}" target="_blank">Open supervisor chat</a>` : '',
-  ].filter(Boolean).join(' | ');
-
-  const changedFiles = projectData.git.modifiedFiles || projectData.git.changedFiles || [];
-  const untrackedCount = Number(projectData.git.untrackedCount || 0);
-  let changedHtml = '';
-  if (changedFiles.length > 0) {
-    changedHtml = '<table class="metrics-table">';
-    changedHtml += '<thead><tr><th>Modified</th><th>File</th><th>Status</th></tr></thead><tbody>';
-    for (const file of changedFiles) {
-      const time = file.mtime ? new Date(file.mtime).toLocaleTimeString() : '-';
-      const state = `${file.indexStatus || ''}${file.worktreeStatus || ''}`.trim();
-      const status = state ? `<span style="color:var(--yellow)">${esc(state)}</span>` : '<span style="color:var(--yellow)">modified</span>';
-      changedHtml += `<tr><td class="mono">${time}</td><td>${esc(file.file)}</td><td>${status}</td></tr>`;
-    }
-    changedHtml += '</tbody></table>';
-    if (projectData.git.diffSummary) {
-      changedHtml += `<div class="subtle" style="margin-top:8px">${esc(projectData.git.diffSummary)}</div>`;
-    }
-  }
-
-  let html = '';
-
-  html += `
-    <div class="card">
-      <div class="card-header"><h2>Gateway</h2></div>
-      <div class="card-body">
-        <div class="field-row"><span class="field-label">Profile</span><span class="field-value">${esc(projectData.profile)}</span></div>
-        <div class="field-row"><span class="field-label">OpenClaw port</span><span class="field-value">${esc(projectData.gateway.port || '-')}</span></div>
-        <div class="field-row"><span class="field-label">Dashboard port</span><span class="field-value">${esc(projectData.dashboard.port)}</span></div>
-        <div class="field-row"><span class="field-label">Links</span></div>
-        <div class="field-value" style="font-size:13px">${openclawLinks || 'not configured'}</div>
-      </div>
-    </div>
-  `;
-
-  html += `
-    <div class="card">
-      <div class="card-header"><h2>Git</h2></div>
-      <div class="card-body">
-        <pre>${esc(projectData.git.log || 'No git history yet')}</pre>
-        <div class="section-title">Modified Files (${changedFiles.length})</div>
-        ${changedFiles.length > 0 ? changedHtml : '<span class="subtle" style="color:var(--green)">No tracked file modifications</span>'}
-        ${untrackedCount > 0 ? `<div class="subtle" style="margin-top:8px">Hidden untracked files: ${esc(String(untrackedCount))}</div>` : ''}
-      </div>
-    </div>
-  `;
-
-  html += `
-    <div class="card grid-full">
-      <div class="card-header"><h2>Context Budget</h2></div>
-      <div class="card-body">
-        <div class="field-row"><span class="field-label">Instruction estimate</span><span class="field-value">${esc(metrics.markdown?.estimator || 'chars/4')} against ${fmtInt(metrics.markdown?.contextLimit || 0)} tokens</span></div>
-        <div class="field-row"><span class="field-label">Compaction threshold</span><span class="field-value">${fmtPct(metrics.live?.threshold || 0)}</span></div>
-        <div class="section-title">Markdown Read Sets</div>
-        ${renderMarkdownTable(metrics.markdown?.rows || [])}
-        <div class="section-title">Live Session Usage</div>
-        ${renderLiveTable(metrics.live?.rows || [])}
-      </div>
-    </div>
-  `;
-
-  for (const agent of agents) {
-    const state = agent.statusFields.state || 'unknown';
-    html += `
-      <div class="card grid-full agent-card">
-        <div class="card-header">
-          <h2>${esc(agent.id)}</h2>
-          <span class="status-badge ${statusClass(state)}">${esc(state)}</span>
-          ${agent.sessionUrl ? `<a href="${agent.sessionUrl}" target="_blank" style="margin-left:auto;font-size:12px;">Open session</a>` : ''}
-        </div>
-        <div class="card-body">
-          <div class="agent-header">
-            <div class="agent-meta">
-              Model: ${esc(agent.model)} | Focus: ${esc(agent.focusDirs.join(', '))} | Thinking: ${esc(agent.thinking)}
-            </div>
-          </div>
-          <div class="field-row"><span class="field-label">Instruction load</span><span class="field-value">${renderBudgetSummary(agent.instructionBudget)}</span></div>
-          <div class="field-row"><span class="field-label">Main session context</span><span class="field-value">${renderSessionSummary(agent.mainSession)}</span></div>
-          <div class="field-row"><span class="field-label">Summary</span><span class="field-value">${esc(agent.statusFields.summary || '-')}</span></div>
-          <div class="field-row"><span class="field-label">Next step</span><span class="field-value">${esc(agent.statusFields['next step'] || '-')}</span></div>
-          <div class="field-row"><span class="field-label">Blocker</span><span class="field-value">${esc(agent.statusFields.blocker || 'none')}</span></div>
-          <div class="field-row"><span class="field-label">Files touched</span><span class="field-value">${esc(agent.statusFields['files touched'] || '-')}</span></div>
-          <div class="field-row"><span class="field-label">Tests</span><span class="field-value">${esc(agent.statusFields.tests || '-')}</span></div>
-          <div class="field-row"><span class="field-label">Decision needed</span><span class="field-value">${esc(agent.statusFields['needs supervisor decision'] || 'no')}</span></div>
-          <div class="field-row"><span class="field-label">Last updated</span><span class="field-value">${esc(agent.statusFields['last updated'] || '-')}</span></div>
-
-          <div class="tabs" data-agent="${esc(agent.id)}">
-            <button class="tab active" data-tab="brief">BRIEF</button>
-            <button class="tab" data-tab="plan">PLAN</button>
-            <button class="tab" data-tab="status-raw">STATUS (raw)</button>
-            <button class="tab" data-tab="memory">MEMORY</button>
-            <button class="tab" data-tab="soul">SOUL</button>
-          </div>
-          <div class="tab-content active" data-agent="${esc(agent.id)}" data-tab="brief"><pre>${esc(agent.files.brief || 'No BRIEF.md')}</pre></div>
-          <div class="tab-content" data-agent="${esc(agent.id)}" data-tab="plan"><pre>${esc(agent.files.plan || 'No PLAN.md yet')}</pre></div>
-          <div class="tab-content" data-agent="${esc(agent.id)}" data-tab="status-raw"><pre>${esc(agent.files.status || 'No STATUS.md')}</pre></div>
-          <div class="tab-content" data-agent="${esc(agent.id)}" data-tab="memory"><pre>${esc(agent.files.memory || 'No MEMORY.md')}</pre></div>
-          <div class="tab-content" data-agent="${esc(agent.id)}" data-tab="soul"><pre>${esc(agent.files.soul || 'No SOUL.md')}</pre></div>
-        </div>
-      </div>
-    `;
-  }
-
-  html += `
-    <div class="card grid-full">
-      <div class="card-header">
-        <h2>Supervisor</h2>
-        ${supervisor.sessionUrl ? `<a href="${supervisor.sessionUrl}" target="_blank" style="margin-left:auto;font-size:12px;">Open session</a>` : ''}
-      </div>
-      <div class="card-body">
-        <div class="field-row"><span class="field-label">Instruction load</span><span class="field-value">${supervisor.instructionBudget?.coreLoop && supervisor.instructionBudget?.withShared ? `${fmtPct(supervisor.instructionBudget.coreLoop.usagePct)} core loop / ${fmtPct(supervisor.instructionBudget.withShared.usagePct)} with shared` : 'No budget snapshot yet'}</span></div>
-        <div class="field-row"><span class="field-label">Main session context</span><span class="field-value">${renderSessionSummary(supervisor.mainSession)}</span></div>
-        <div class="section-title">Recent Cron Runs</div>
-        ${renderCronTable(supervisor.cronSessions || [])}
-
-        <div class="tabs" data-agent="supervisor">
-          <button class="tab active" data-tab="roster">ROSTER</button>
-          <button class="tab" data-tab="sup-memory">Latest Memory</button>
-          <button class="tab" data-tab="sup-status">STATUS</button>
-        </div>
-        <div class="tab-content active" data-agent="supervisor" data-tab="roster"><pre>${esc(supervisor.roster || 'No ROSTER.md')}</pre></div>
-        <div class="tab-content" data-agent="supervisor" data-tab="sup-memory"><pre>${esc(supervisor.latestMemory || 'No memory logs yet')}</pre></div>
-        <div class="tab-content" data-agent="supervisor" data-tab="sup-status"><pre>${esc(supervisor.status || 'No STATUS.md')}</pre></div>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('main-grid').innerHTML = html;
-
-  document.querySelectorAll('.tabs').forEach((tabBar) => {
-    tabBar.querySelectorAll('.tab').forEach((tab) => {
-      tab.addEventListener('click', () => {
-        const agent = tabBar.dataset.agent;
-        const tabName = tab.dataset.tab;
-        tabBar.querySelectorAll('.tab').forEach((button) => button.classList.remove('active'));
-        tab.classList.add('active');
-        document.querySelectorAll(`.tab-content[data-agent="${agent}"]`).forEach((content) => {
-          content.classList.toggle('active', content.dataset.tab === tabName);
-        });
-      });
-    });
-  });
+  wireTabs();
 }
 
 function refresh() {
   fetchAll().catch((error) => {
     console.error(error);
-    document.getElementById('main-grid').innerHTML = `<div class="card grid-full"><div class="card-body"><pre>${esc(error.message)}</pre></div></div>`;
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('role-sections').innerHTML = `<section class="card"><div class="card-body"><pre>${esc(error.message)}</pre></div></section>`;
+    document.getElementById('support').innerHTML = '';
   });
 }
 

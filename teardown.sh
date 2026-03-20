@@ -28,6 +28,7 @@ MORNING_CRON_NAME="${PROJECT_SLUG}-supervisor-morning-report"
 GATEWAY_PORT="$("${OPENCLAW_CMD[@]}" config get gateway.port 2>/dev/null || true)"
 DASHBOARD_PORT="$(resolve_dashboard_port_from_scope "${SCOPE_FILE}" "${OPENCLAW_PROFILE}" "${GATEWAY_PORT}")"
 DASHBOARD_PID_FILE="${SCRIPT_DIR}/generated/dashboard.pid"
+RECONCILE_PID_FILE="${SCRIPT_DIR}/generated/reconcile.pid"
 
 stop_dashboard_if_running() {
     local pid=""
@@ -48,6 +49,23 @@ stop_dashboard_if_running() {
     fi
 
     rm -f "${DASHBOARD_PID_FILE}"
+}
+
+stop_reconciler_if_running() {
+    local pid=""
+    if [[ -f "${RECONCILE_PID_FILE}" ]]; then
+        pid="$(cat "${RECONCILE_PID_FILE}" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+        kill "${pid}" >/dev/null 2>&1 || true
+        sleep 1
+        log "Status reconciler stopped"
+    elif [[ -f "${RECONCILE_PID_FILE}" ]]; then
+        warn "Status reconciler pid file was stale"
+    fi
+
+    rm -f "${RECONCILE_PID_FILE}"
 }
 
 find_job_id() {
@@ -87,6 +105,10 @@ fi
 # Stop dashboard
 warn "Stopping dashboard..."
 stop_dashboard_if_running
+
+# Stop reconciler
+warn "Stopping status reconciler..."
+stop_reconciler_if_running
 
 # Remove cron jobs
 warn "Removing cron jobs..."

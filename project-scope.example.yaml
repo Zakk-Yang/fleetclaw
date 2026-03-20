@@ -34,6 +34,7 @@ supervisor:
   stall_timeout_mins: 20          # Minutes without progress = stalled
   review_checkpoint_mins: 20      # Force checkpoint review after N minutes
   max_commits_without_decision: 3 # Force checkpoint after N commits
+  status_reconcile_interval_secs: 30 # Seconds between deterministic ACCEPT_DONE reconciliation passes
   notify_channel: ""              # Optional: slack, discord, telegram, etc.
   notify_target: ""               # Optional: channel/user to notify
   morning_report_hour: ""         # Optional: hour (0-23) for daily summary
