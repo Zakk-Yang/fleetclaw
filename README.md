@@ -93,6 +93,7 @@ For a full runtime-state wipe without deleting your project files:
 - **OpenClaw UI**: http://localhost:{port}/ (port shown after launch)
 - **FleetClaw Dashboard**: starts automatically during `launch.sh` and opens in your browser at the resolved project dashboard URL
 - The dashboard now shows both estimated Markdown read-set percentages and live session context usage percentages
+- The dashboard also includes a human feedback form that routes review notes into the supervisor loop by default and keeps a recent submission trail
 - FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
 
 ## Authoring Model

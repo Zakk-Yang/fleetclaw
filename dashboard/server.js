@@ -10,9 +10,14 @@ const SCOPE_FILE = path.join(SCRIPT_DIR, 'project-scope.yaml');
 const PORT = parseInt(process.env.PORT || '3333', 10);
 const HOST = process.env.HOST || '127.0.0.1';
 const CACHE_TTL_MS = 3000;
+const GENERATED_DIR = path.join(SCRIPT_DIR, 'generated');
+const FEEDBACK_LOG_FILE = path.join(GENERATED_DIR, 'human-feedback.jsonl');
+const FEEDBACK_HISTORY_LIMIT = 12;
 
 let cachedPayload = null;
 let cachedAt = 0;
+
+app.use(express.json({ limit: '64kb' }));
 
 function resolveProjectRoot(scope) {
   const repo = scope?.project?.repo || '.';
@@ -62,6 +67,11 @@ function resolveProfile(scope) {
 
 function resolveProfileConfigPath(profile) {
   return path.join(process.env.HOME, `.openclaw-${profile}`, 'openclaw.json');
+}
+
+function invalidateDashboardCache() {
+  cachedPayload = null;
+  cachedAt = 0;
 }
 
 function readMdFile(filePath) {
@@ -431,6 +441,138 @@ function resolveStatusLastUpdatedDisplay(statusFields, statusFilePath) {
   return formatDashboardTimestamp(parsedMtime) || rawValue || '-';
 }
 
+function ensureParentDir(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+function trimString(value, maxLength = 4000) {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, maxLength);
+}
+
+function normalizeFeedbackSeverity(value) {
+  const normalized = String(value || '').toLowerCase();
+  return ['note', 'issue', 'blocking'].includes(normalized) ? normalized : 'issue';
+}
+
+function normalizeFeedbackTarget(scope, value) {
+  const target = String(value || 'supervisor').trim();
+  if (target === 'supervisor') return 'supervisor';
+  return (scope.agents || []).some((agent) => agent.id === target) ? target : null;
+}
+
+function resolveFeedbackTargets(scope) {
+  const targets = [
+    { id: 'supervisor', label: 'Supervisor', kind: 'supervisor', recommended: true },
+  ];
+
+  for (const agent of scope.agents || []) {
+    targets.push({
+      id: agent.id,
+      label: agent.id,
+      kind: 'agent',
+      recommended: false,
+    });
+  }
+
+  return targets;
+}
+
+function resolveFeedbackRuntimeId(scope, targetId) {
+  const projectSlug = slugify(scope?.project?.name);
+  if (targetId === 'supervisor') return `${projectSlug}-supervisor`;
+  if ((scope.agents || []).some((agent) => agent.id === targetId)) {
+    return `${projectSlug}-${targetId}`;
+  }
+  return null;
+}
+
+function sendGatewayChatMessage(profile, sessionKey, message, runId) {
+  const params = JSON.stringify({
+    sessionKey,
+    message,
+    idempotencyKey: runId,
+  });
+
+  try {
+    const raw = execFileSync(
+      'openclaw',
+      ['--profile', profile, 'gateway', 'call', 'chat.send', '--json', '--params', params],
+      { encoding: 'utf8', timeout: 10000 },
+    );
+    const parsed = JSON.parse(raw);
+    return {
+      ok: true,
+      runId: parsed?.runId || runId,
+      status: parsed?.status || 'started',
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function appendFeedbackEntry(entry) {
+  ensureParentDir(FEEDBACK_LOG_FILE);
+  fs.appendFileSync(FEEDBACK_LOG_FILE, `${JSON.stringify(entry)}\n`, 'utf8');
+}
+
+function loadFeedbackEntries(limit = FEEDBACK_HISTORY_LIMIT) {
+  if (!fs.existsSync(FEEDBACK_LOG_FILE)) return [];
+
+  const rows = [];
+  const lines = fs.readFileSync(FEEDBACK_LOG_FILE, 'utf8').split('\n');
+  for (const rawLine of lines) {
+    if (!rawLine) continue;
+    try {
+      const parsed = JSON.parse(rawLine);
+      if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') {
+        rows.push(parsed);
+      }
+    } catch {}
+  }
+
+  rows.sort((left, right) => {
+    const leftMs = parseTimestamp(left.createdAt)?.getTime() || 0;
+    const rightMs = parseTimestamp(right.createdAt)?.getTime() || 0;
+    return rightMs - leftMs;
+  });
+
+  return rows.slice(0, limit);
+}
+
+function buildHumanFeedbackMessage(entry) {
+  const header = `[${formatDashboardTimestamp(parseTimestamp(entry.createdAt)) || entry.createdAt}] HUMAN_FEEDBACK`;
+  const lines = [
+    header,
+    `Target: ${entry.targetLabel}`,
+    `Severity: ${entry.severity}`,
+    `Blocks acceptance: ${entry.blocksAcceptance ? 'yes' : 'no'}`,
+  ];
+
+  if (entry.surface) {
+    lines.push(`Review surface: ${entry.surface}`);
+  }
+
+  lines.push('');
+  lines.push('Feedback:');
+  lines.push(entry.message);
+  lines.push('');
+
+  if (entry.target === 'supervisor') {
+    lines.push('Review this feedback, reproduce the issue if needed, and route the next decision to the correct lane.');
+    if (entry.blocksAcceptance) {
+      lines.push('Treat this as blocking review feedback and do not accept the current review build until it is resolved.');
+    }
+  } else {
+    lines.push('Treat this as direct human feedback for your lane. If coordination is needed, update STATUS.md and request a supervisor decision before continuing.');
+  }
+
+  return lines.join('\n');
+}
+
 function uniqueExistingPaths(paths) {
   const seen = new Set();
   return paths.filter((filePath) => {
@@ -695,6 +837,8 @@ function buildDashboardPayload() {
   const supervisorCronRows = live.rows
     .filter((row) => row.displayAgentId === 'supervisor' && row.sessionKind === 'cron')
     .slice(0, 5);
+  const feedbackTargets = resolveFeedbackTargets(scope);
+  const feedbackEntries = loadFeedbackEntries();
 
   return {
     project: {
@@ -744,6 +888,10 @@ function buildDashboardPayload() {
       markdown,
       live,
     },
+    feedback: {
+      entries: feedbackEntries,
+      targets: feedbackTargets,
+    },
   };
 }
 
@@ -791,6 +939,60 @@ app.get('/api/metrics', (req, res) => {
   const payload = getDashboardPayload();
   if (!payload) return res.status(404).json({ error: 'project-scope.yaml not found' });
   res.json(payload.metrics);
+});
+
+app.post('/api/feedback', (req, res) => {
+  const scope = loadScope();
+  if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
+
+  const target = normalizeFeedbackTarget(scope, req.body?.target);
+  if (!target) return res.status(400).json({ error: 'Invalid feedback target' });
+
+  const message = trimString(req.body?.message, 6000);
+  if (!message) return res.status(400).json({ error: 'Feedback message is required' });
+
+  const severity = normalizeFeedbackSeverity(req.body?.severity);
+  const surface = trimString(req.body?.surface, 1000);
+  const blocksAcceptance = Boolean(req.body?.blocksAcceptance);
+  const runtimeId = resolveFeedbackRuntimeId(scope, target);
+  if (!runtimeId) return res.status(400).json({ error: 'Could not resolve runtime target' });
+
+  const targetInfo = resolveFeedbackTargets(scope).find((item) => item.id === target);
+  const createdAt = new Date().toISOString();
+  const entry = {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt,
+    target,
+    targetLabel: targetInfo?.label || target,
+    targetKind: targetInfo?.kind || 'agent',
+    runtimeId,
+    severity,
+    blocksAcceptance,
+    surface,
+    message,
+    status: 'started',
+  };
+
+  const profile = resolveProfile(scope);
+  const delivery = sendGatewayChatMessage(
+    profile,
+    `agent:${runtimeId}:main`,
+    buildHumanFeedbackMessage(entry),
+    entry.id,
+  );
+  if (!delivery.ok) {
+    entry.status = 'dispatch-error';
+    entry.error = delivery.error;
+    appendFeedbackEntry(entry);
+    invalidateDashboardCache();
+    return res.status(500).json({ error: delivery.error || 'Could not queue feedback message', entry });
+  }
+
+  entry.status = delivery.status || 'started';
+  entry.runId = delivery.runId || entry.id;
+  appendFeedbackEntry(entry);
+  invalidateDashboardCache();
+  return res.json({ ok: true, entry });
 });
 
 app.get('/openclaw', (req, res) => {
