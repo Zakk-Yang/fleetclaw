@@ -78,13 +78,13 @@ Relative `*_file` paths resolve from the `fleetclaw/` directory.
 
 ```bash
 ./setup.sh    # Creates agent configs, OpenClaw profile, cron jobs
-./launch.sh   # Starts gateway, dashboard, heartbeat, and agent sessions
+./launch.sh   # Starts gateway, dashboard, heartbeat, agent sessions, and opens the dashboard tab
 ```
 
 ### 4. Monitor
 
 - **OpenClaw UI**: http://localhost:{port}/ (port shown after launch)
-- **FleetClaw Dashboard**: starts automatically during `launch.sh` at http://localhost:{dashboard_port}
+- **FleetClaw Dashboard**: starts automatically during `launch.sh` and opens in your browser at the resolved project dashboard URL
 - The dashboard now shows both estimated Markdown read-set percentages and live session context usage percentages
 - FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
 

@@ -246,6 +246,70 @@ detect_platform() {
     fi
 }
 
+is_truthy() {
+    local raw_value="${1:-}"
+    local normalized
+    normalized="$(printf '%s' "${raw_value}" | tr '[:upper:]' '[:lower:]')"
+
+    case "${normalized}" in
+        1|true|yes|on)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+wait_for_http_url() {
+    local url="$1"
+    local timeout_secs="${2:-10}"
+
+    python3 - "${url}" "${timeout_secs}" <<'PY'
+import sys
+import time
+import urllib.error
+import urllib.request
+
+url = sys.argv[1]
+timeout_secs = float(sys.argv[2])
+deadline = time.time() + timeout_secs
+
+while time.time() < deadline:
+    try:
+        with urllib.request.urlopen(url, timeout=1.5):
+            raise SystemExit(0)
+    except urllib.error.HTTPError:
+        raise SystemExit(0)
+    except Exception:
+        time.sleep(0.25)
+
+raise SystemExit(1)
+PY
+}
+
+open_url_in_browser() {
+    local url="$1"
+
+    case "${FLEETCLAW_PLATFORM:-unknown}" in
+        macos)
+            command -v open >/dev/null 2>&1 || return 1
+            open "${url}" >/dev/null 2>&1 &
+            ;;
+        wsl|windows)
+            command -v cmd.exe >/dev/null 2>&1 || return 1
+            cmd.exe /c start "" "${url}" >/dev/null 2>&1
+            ;;
+        linux|unknown)
+            command -v xdg-open >/dev/null 2>&1 || return 1
+            xdg-open "${url}" >/dev/null 2>&1 &
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 enable_yq_fallback() {
     if command -v yq >/dev/null 2>&1; then
         return 0

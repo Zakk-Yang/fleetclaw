@@ -72,6 +72,7 @@ advanced:
   openclaw_profile: ""             # Override OpenClaw profile name (default: slugified project name)
   gateway_port: ""                 # Override gateway port (default: auto-derived)
   dashboard_port: ""               # Override dashboard port (default: gateway_port + 1)
+  auto_open_dashboard: true        # Open the resolved dashboard URL in the browser after launch
   default_agent_model: "openai-codex/gpt-5.4"
   template_dir: ""                 # Optional: custom template directory (default: fleetclaw/templates)
   shared_files:

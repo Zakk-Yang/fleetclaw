@@ -42,6 +42,7 @@ WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")
 
 PROJECT_REPO=$(yval '.project.repo')
 SUPERVISOR_THINKING=$(yval_default '.supervisor.thinking' '')
+AUTO_OPEN_DASHBOARD="$(yval_default '.advanced.auto_open_dashboard' 'true')"
 PROJECT_ROOT="$(resolve_project_root_path "${PROJECT_REPO}" "${SCRIPT_DIR}")"
 
 # Derive gateway port (same logic as setup.sh)
@@ -68,6 +69,7 @@ DASHBOARD_INSTALL_LOG_FILE="${SCRIPT_DIR}/generated/dashboard-install.log"
 RECONCILE_INTERVAL_SECS="$(yval_default '.supervisor.status_reconcile_interval_secs' '30')"
 RECONCILE_PID_FILE="${SCRIPT_DIR}/generated/reconcile.pid"
 RECONCILE_LOG_FILE="${SCRIPT_DIR}/generated/reconcile.log"
+DASHBOARD_URL="http://${FLEETCLAW_DASHBOARD_HOST}:${DASHBOARD_PORT}/"
 
 agent_runtime_id() {
     printf '%s-%s\n' "${PROJECT_SLUG}" "$1"
@@ -158,6 +160,11 @@ start_dashboard() {
     stop_dashboard_if_running
 
     if ! dashboard_port_available; then
+        if wait_for_http_url "${DASHBOARD_URL}" 4; then
+            log "Dashboard already available at ${DASHBOARD_URL}"
+            return 0
+        fi
+
         warn "Dashboard port ${DASHBOARD_PORT} is already in use — skipping automatic startup"
         return 1
     fi
@@ -188,8 +195,6 @@ with open(pid_path, "w", encoding="utf-8") as pid_handle:
     pid_handle.write(str(proc.pid))
 PY
 
-    sleep 2
-
     local pid
     pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
     if command -v lsof >/dev/null 2>&1; then
@@ -200,8 +205,8 @@ PY
             printf '%s\n' "${pid}" >"${DASHBOARD_PID_FILE}"
         fi
     fi
-    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
-        log "Dashboard started on http://${FLEETCLAW_DASHBOARD_HOST}:${DASHBOARD_PORT}/"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1 && wait_for_http_url "${DASHBOARD_URL}" 10; then
+        log "Dashboard started on ${DASHBOARD_URL}"
         return 0
     fi
 
@@ -355,9 +360,6 @@ if [[ -n "${GATEWAY_TOKEN}" ]]; then
 else
     OPENCLAW_UI_URL="http://${DASHBOARD_HOST}:${GATEWAY_PORT}/"
 fi
-
-DASHBOARD_URL="http://${DASHBOARD_HOST}:${DASHBOARD_PORT}/"
-
 if [[ "${DASHBOARD_STARTED}" -eq 1 ]]; then
     info "FleetClaw dashboard: ${DASHBOARD_URL}"
 else
@@ -368,6 +370,15 @@ if [[ "${RECONCILER_STARTED}" -ne 1 ]]; then
 fi
 info "OpenClaw UI: ${OPENCLAW_UI_URL}"
 echo ""
+
+if [[ "${DASHBOARD_STARTED}" -eq 1 ]] && is_truthy "${AUTO_OPEN_DASHBOARD}"; then
+    if open_url_in_browser "${DASHBOARD_URL}"; then
+        log "Opened FleetClaw dashboard in your browser"
+    else
+        warn "Could not auto-open the dashboard browser tab"
+    fi
+fi
+
 echo "Agent sessions:"
 for i in $(seq 0 $((AGENT_COUNT - 1))); do
     AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
