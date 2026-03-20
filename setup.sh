@@ -56,6 +56,159 @@ read_scope() {
 yval() { yq eval "$1" "$SCOPE_FILE"; }
 yval_default() { yq eval "$1 // \"$2\"" "$SCOPE_FILE"; }
 
+resolve_scope_path() {
+    local raw_path="$1"
+
+    if [[ -z "${raw_path}" || "${raw_path}" == "null" ]]; then
+        return 1
+    fi
+
+    raw_path="$(expand_path "${raw_path}")"
+    if [[ "${raw_path}" != /* ]]; then
+        raw_path="${SCRIPT_DIR}/${raw_path}"
+    fi
+
+    printf '%s\n' "${raw_path}"
+}
+
+read_scope_text_file() {
+    local raw_path="$1"
+    local label="$2"
+    local resolved_path
+
+    resolved_path="$(resolve_scope_path "${raw_path}")" || {
+        err "${label} file path is empty"
+        exit 1
+    }
+
+    if [[ ! -f "${resolved_path}" ]]; then
+        err "${label} file not found: ${resolved_path}"
+        exit 1
+    fi
+
+    cat "${resolved_path}"
+}
+
+resolve_scope_text() {
+    local inline_expr="$1"
+    local file_expr="$2"
+    local default_value="${3:-}"
+    local label="${4:-scope text}"
+    local inline_value
+    local file_value
+
+    inline_value="$(yval_default "${inline_expr}" "")"
+    file_value="$(yval_default "${file_expr}" "")"
+
+    if [[ -n "${file_value}" && "${file_value}" != "null" ]]; then
+        if [[ -n "${inline_value}" && "${inline_value}" != "null" ]]; then
+            warn "${label} is defined inline and via ${file_expr}; using the file-backed value"
+        fi
+        read_scope_text_file "${file_value}" "${label}"
+        return 0
+    fi
+
+    if [[ -n "${inline_value}" && "${inline_value}" != "null" ]]; then
+        printf '%s\n' "${inline_value}"
+        return 0
+    fi
+
+    printf '%s\n' "${default_value}"
+}
+
+bootstrap_local_repo() {
+    local repo_dir="$1"
+    local branch_name="$2"
+
+    mkdir -p "${repo_dir}"
+    echo -e "${BLUE}[i]${NC} Initializing git repo in local project path: ${repo_dir}" >&2
+    git -C "${repo_dir}" init -q -b "${branch_name}"
+    git -C "${repo_dir}" add -A 2>/dev/null || true
+    git -C "${repo_dir}" \
+        -c user.name="FleetClaw" \
+        -c user.email="fleetclaw@local" \
+        commit --allow-empty -q -m "FleetClaw: initialize project repo" 2>/dev/null || true
+}
+
+resolve_template_dir() {
+    local configured_dir
+
+    configured_dir="$(yval_default '.advanced.template_dir' '')"
+    if [[ -z "${configured_dir}" || "${configured_dir}" == "null" ]]; then
+        configured_dir="${SCRIPT_DIR}/templates"
+    else
+        configured_dir="$(resolve_scope_path "${configured_dir}")"
+    fi
+
+    if [[ ! -d "${configured_dir}" ]]; then
+        err "Template directory not found: ${configured_dir}"
+        exit 1
+    fi
+
+    printf '%s\n' "${configured_dir}"
+}
+
+template_path() {
+    local template_dir="$1"
+    local template_name="$2"
+    local resolved_template="${template_dir}/${template_name}"
+
+    if [[ ! -f "${resolved_template}" ]]; then
+        err "Template not found: ${resolved_template}"
+        exit 1
+    fi
+
+    printf '%s\n' "${resolved_template}"
+}
+
+render_template() {
+    local template_file="$1"
+    local output_file="$2"
+    shift 2
+    local env_args=()
+    local key
+
+    for key in "$@"; do
+        env_args+=("${key}=${!key-}")
+    done
+
+    env "${env_args[@]}" python3 - "${template_file}" "${output_file}" <<'PY'
+import os
+import pathlib
+import re
+import sys
+
+template_text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+missing = []
+
+def replace(match: re.Match[str]) -> str:
+    key = match.group(1)
+    if key not in os.environ:
+        missing.append(key)
+        return ""
+    return os.environ[key]
+
+rendered = re.sub(r"\{\{([A-Z0-9_]+)\}\}", replace, template_text)
+if missing:
+    raise SystemExit(
+        f"Missing template values for {sys.argv[1]}: {', '.join(sorted(set(missing)))}"
+    )
+
+pathlib.Path(sys.argv[2]).write_text(rendered, encoding="utf-8")
+PY
+}
+
+build_optional_section() {
+    local title="$1"
+    local body="$2"
+
+    if [[ -z "${body}" || "${body}" == "null" ]]; then
+        return 0
+    fi
+
+    printf '\n## %s\n%s\n' "${title}" "${body}"
+}
+
 resolve_local_repo_path() {
     local repo_source="$1"
 
@@ -83,16 +236,19 @@ resolve_local_repo_path() {
         elif [[ -d "${parent_dir}" ]]; then
             # Parent exists but is not a git repo — initialize one so
             # diffs and commits work for the shared project root
-            echo -e "${BLUE}[i]${NC} Initializing git repo in project root: ${parent_dir}" >&2
-            git -C "${parent_dir}" init -q
-            git -C "${parent_dir}" add -A 2>/dev/null || true
-            git -C "${parent_dir}" commit -q -m "FleetClaw: initialize project repo" 2>/dev/null || true
-            printf '%s\n' "${parent_dir}"
+            bootstrap_local_repo "${parent_dir}" "${PROJECT_BRANCH:-main}"
+            git -C "${parent_dir}" rev-parse --show-toplevel
             return 0
         fi
     fi
 
     if git -C "${repo_source}" rev-parse --show-toplevel >/dev/null 2>&1; then
+        git -C "${repo_source}" rev-parse --show-toplevel
+        return 0
+    fi
+
+    if [[ -d "${repo_source}" ]]; then
+        bootstrap_local_repo "${repo_source}" "${PROJECT_BRANCH:-main}"
         git -C "${repo_source}" rev-parse --show-toplevel
         return 0
     fi
@@ -188,6 +344,27 @@ collect_required_models() {
         agent_model_json=$(resolve_model_json ".agents[$i].model // .advanced.default_agent_model // \"openai-codex/gpt-5.4\"")
         model_refs_from_json "${agent_model_json}"
     done | awk 'NF' | sort -u
+}
+
+resolve_cli_backend_config_json() {
+    local required_models codex_bin
+    required_models="$(collect_required_models)"
+
+    if printf '%s\n' "${required_models}" | grep -q '^codex-cli/'; then
+        codex_bin="$(command -v codex || true)"
+        if [[ -z "${codex_bin}" ]]; then
+            err "A codex-cli model is configured but the 'codex' binary was not found in PATH."
+            exit 1
+        fi
+
+        cat <<EOF
+      cliBackends: {
+        "codex-cli": {
+          command: "${codex_bin}"
+        }
+      },
+EOF
+    fi
 }
 
 warn_for_openclaw_inheritance() {
@@ -340,7 +517,7 @@ main() {
     PROJECT_NAME=$(yval '.project.name')
     PROJECT_REPO=$(yval '.project.repo')
     PROJECT_BRANCH=$(yval_default '.project.branch' 'main')
-    PROJECT_DESC=$(yval '.project.description')
+    PROJECT_DESC=$(resolve_scope_text '.project.description' '.project.description_file' '' 'project.description')
 
     SUPERVISOR_MODEL_JSON=$(resolve_model_json '.supervisor.model // "anthropic/claude-sonnet-4-6"')
     SUPERVISOR_MODEL_LABEL=$(resolve_model_label '.supervisor.model.primary // .supervisor.model // "anthropic/claude-sonnet-4-6"')
@@ -354,11 +531,24 @@ main() {
     NOTIFY_TARGET=$(yval_default '.supervisor.notify_target' '')
     REPORT_HOUR=$(yval_default '.supervisor.morning_report_hour' '8')
     REPORT_TZ=$(yval_default '.supervisor.morning_report_tz' 'Europe/London')
+    SUPERVISOR_OBJECTIVE=$(resolve_scope_text '.supervisor.objective' '.supervisor.objective_file' '' 'supervisor objective')
+    SUPERVISOR_HANDOFF_RULES=$(resolve_scope_text '.supervisor.handoff_rules' '.supervisor.handoff_rules_file' '' 'supervisor handoff rules')
+    SUPERVISOR_OBJECTIVE_BLOCK=""
+    SUPERVISOR_HANDOFF_RULES_BLOCK=""
+    TEMPLATE_DIR="$(resolve_template_dir)"
+    PROJECT_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "PROJECT.md.tpl")"
+    MEMORY_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "MEMORY.md.tpl")"
+    ROSTER_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "ROSTER.md.tpl")"
+    SUPERVISOR_SOUL_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "supervisor-SOUL.md.tpl")"
+    AGENT_BRIEF_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "agent-BRIEF.md.tpl")"
+    AGENT_SOUL_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "agent-SOUL.md.tpl")"
+    AGENT_STATUS_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "agent-STATUS.md.tpl")"
 
     AGENT_COUNT=$(yq eval '.agents | length' "$SCOPE_FILE")
     WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
     PROJECT_SLUG="$(slugify "${PROJECT_NAME}")"
     PROJECT_PROFILE="$(resolve_openclaw_profile_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
+    OPENCLAW_BIN="$(command -v openclaw)"
     PROFILE_ROOT="${HOME}/.openclaw-${PROJECT_PROFILE}"
     PROFILE_CONFIG_PATH="${PROFILE_ROOT}/openclaw.json"
     PROFILE_GATEWAY_PORT="$(derive_gateway_port "${PROJECT_PROFILE}" "$(yval_default '.advanced.gateway_port' '')")"
@@ -368,6 +558,16 @@ main() {
     MORNING_CRON_NAME="${PROJECT_SLUG}-supervisor-morning-report"
     CONFIG_THINKING_DEFAULT=""
     THINKING_VALUES=""
+    declare -a AGENT_IDS AGENT_TASKS AGENT_FOCUS_DIRS AGENT_TASK_SUMMARIES AGENT_RUNTIME_IDS AGENT_MODEL_JSONS
+
+    for i in $(seq 0 $((AGENT_COUNT - 1))); do
+        AGENT_IDS[i]="$(yq eval ".agents[$i].id" "$SCOPE_FILE")"
+        AGENT_TASKS[i]="$(resolve_scope_text ".agents[$i].task" ".agents[$i].task_file" "" "agents[$i].task")"
+        AGENT_FOCUS_DIRS[i]="$(yq eval ".agents[$i].focus_dirs | join(\", \")" "$SCOPE_FILE")"
+        AGENT_TASK_SUMMARIES[i]="$(printf '%s\n' "${AGENT_TASKS[i]}" | awk 'NF { print; exit }')"
+        AGENT_RUNTIME_IDS[i]="$(agent_runtime_id "${AGENT_IDS[i]}")"
+        AGENT_MODEL_JSONS[i]="$(resolve_model_json ".agents[$i].model // .advanced.default_agent_model // \"openai-codex/gpt-5.4\"")"
+    done
 
     if [[ -n "${SUPERVISOR_THINKING}" && "${SUPERVISOR_THINKING}" != "null" ]]; then
         THINKING_VALUES+=$'\n'"${SUPERVISOR_THINKING}"
@@ -391,12 +591,16 @@ main() {
         warn "No auth.profiles block was found in the default OpenClaw config. The dedicated FleetClaw profile will be generated without provider auth mappings."
     fi
 
+    SUPERVISOR_OBJECTIVE_BLOCK="$(build_optional_section "Project-Specific Objective" "${SUPERVISOR_OBJECTIVE}")"
+    SUPERVISOR_HANDOFF_RULES_BLOCK="$(build_optional_section "Project-Specific Coordination Rules" "${SUPERVISOR_HANDOFF_RULES}")"
+
     info "Project: ${PROJECT_NAME} (${AGENT_COUNT} coding agents)"
     info "OpenClaw profile: ${PROJECT_PROFILE}"
     info "Supervisor: ${SUPERVISOR_MODEL_LABEL} checking every ${CHECK_INTERVAL}m"
     info "Compact threshold: ${COMPACT_THRESHOLD}%"
     info "Review checkpoints: ${REVIEW_CHECKPOINT_MINS}m or ${MAX_COMMITS_WITHOUT_DECISION} commits"
     info "Worktree base: ${WORKTREE_BASE}"
+    info "Template dir: ${TEMPLATE_DIR}"
     info "Profile state dir: ${PROFILE_ROOT}"
     info "Profile gateway port: ${PROFILE_GATEWAY_PORT}"
     info "Platform: ${FLEETCLAW_PLATFORM}"
@@ -433,10 +637,20 @@ main() {
         exit 1
     fi
 
+    if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+        log "Repository has no commits yet; creating initial commit on ${PROJECT_BRANCH}"
+        git symbolic-ref HEAD "refs/heads/${PROJECT_BRANCH}" >/dev/null 2>&1 || true
+        git add -A 2>/dev/null || true
+        git \
+            -c user.name="FleetClaw" \
+            -c user.email="fleetclaw@local" \
+            commit --allow-empty -q -m "FleetClaw: initialize project repo" 2>/dev/null || true
+    fi
+
     # --- Create per-agent directories in project root ---
     FLEETCLAW_AGENTS_DIR="${REPO_DIR}/.fleetclaw/agents"
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
-        AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
+        AGENT_ID="${AGENT_IDS[i]}"
         AGENT_DIR="${FLEETCLAW_AGENTS_DIR}/${AGENT_ID}"
         mkdir -p "${AGENT_DIR}/memory"
         log "Created agent directory: .fleetclaw/agents/${AGENT_ID}"
@@ -445,78 +659,42 @@ main() {
     # --- Generate PROJECT.md (shared context for all agents) ---
     PROJECT_MD="${SCRIPT_DIR}/generated/PROJECT.md"
     mkdir -p "${SCRIPT_DIR}/generated"
-
-    cat > "${PROJECT_MD}" << PROJECTEOF
-# Project: ${PROJECT_NAME}
-
-## Description
-${PROJECT_DESC}
-
-## Repository
-- Repo: ${PROJECT_REPO}
-- Base branch: ${PROJECT_BRANCH}
-
-## Team Overview
-PROJECTEOF
+    TEAM_OVERVIEW_BLOCK=""
 
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
-        AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
-        AGENT_TASK=$(yq eval ".agents[$i].task" "$SCOPE_FILE")
-        FOCUS=$(yq eval ".agents[$i].focus_dirs | join(\", \")" "$SCOPE_FILE")
-        AGENT_TASK_SUMMARY="$(printf '%s\n' "${AGENT_TASK}" | awk 'NF { print; exit }')"
-        cat >> "${PROJECT_MD}" << AGENTEOF
+        AGENT_ID="${AGENT_IDS[i]}"
+        FOCUS="${AGENT_FOCUS_DIRS[i]}"
+        AGENT_TASK_SUMMARY="${AGENT_TASK_SUMMARIES[i]}"
 
-### ${AGENT_ID}
-- **Focus directories:** ${FOCUS}
-- **Goal:** ${AGENT_TASK_SUMMARY}
-AGENTEOF
+        if [[ -n "${TEAM_OVERVIEW_BLOCK}" ]]; then
+            TEAM_OVERVIEW_BLOCK+=$'\n\n'
+        fi
+        TEAM_OVERVIEW_BLOCK+="### ${AGENT_ID}"$'\n'
+        TEAM_OVERVIEW_BLOCK+="- **Focus directories:** ${FOCUS}"$'\n'
+        TEAM_OVERVIEW_BLOCK+="- **Goal:** ${AGENT_TASK_SUMMARY}"
     done
+
+    render_template "${PROJECT_TEMPLATE}" "${PROJECT_MD}" \
+        PROJECT_NAME PROJECT_DESC PROJECT_REPO PROJECT_BRANCH TEAM_OVERVIEW_BLOCK
 
     log "Generated PROJECT.md"
 
     # --- Generate shared MEMORY.md template ---
     MEMORY_MD="${SCRIPT_DIR}/generated/MEMORY.md"
-    cat > "${MEMORY_MD}" << MEMORYEOF
-# MEMORY.md
-
-Durable project memory for ${PROJECT_NAME}.
-
-Use this file for facts worth keeping across sessions and days.
-Do not use it as a running log.
-
-## Durable Decisions
-- None yet.
-
-## Conventions And Preferences
-- None yet.
-
-## Known Risks And Watchouts
-- None yet.
-
-## Reusable Lessons
-- None yet.
-MEMORYEOF
+    render_template "${MEMORY_TEMPLATE}" "${MEMORY_MD}" PROJECT_NAME
 
     log "Generated MEMORY.md"
 
     # --- Generate shared ROSTER.md for supervisor lookups ---
     ROSTER_MD="${SCRIPT_DIR}/generated/ROSTER.md"
     AGENT_ID_LIST=""
-    cat > "${ROSTER_MD}" << ROSTEREOF
-# ROSTER.md
-
-Fleet map for ${PROJECT_NAME}.
-
-Use this file when you need to look up an agent's workspace, focus dirs, or task summary.
-Do not treat it as a file to reread on every turn.
-ROSTEREOF
+    ROSTER_ENTRIES_BLOCK=""
 
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
-        AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
-        AGENT_TASK=$(yq eval ".agents[$i].task" "$SCOPE_FILE")
-        AGENT_TASK_SUMMARY="$(printf '%s\n' "${AGENT_TASK}" | awk 'NF { print; exit }')"
-        FOCUS=$(yq eval ".agents[$i].focus_dirs | join(\", \")" "$SCOPE_FILE")
-        RUNTIME_AGENT_ID="$(agent_runtime_id "${AGENT_ID}")"
+        AGENT_ID="${AGENT_IDS[i]}"
+        AGENT_TASK_SUMMARY="${AGENT_TASK_SUMMARIES[i]}"
+        FOCUS="${AGENT_FOCUS_DIRS[i]}"
+        RUNTIME_AGENT_ID="${AGENT_RUNTIME_IDS[i]}"
         PRIMARY_SESSION_KEY="agent:${RUNTIME_AGENT_ID}:main"
 
         if [[ -n "${AGENT_ID_LIST}" ]]; then
@@ -524,241 +702,57 @@ ROSTEREOF
         fi
         AGENT_ID_LIST+="${AGENT_ID}"
 
-        cat >> "${ROSTER_MD}" << ROSTERAGENTEOF
-
-## ${AGENT_ID}
-- Runtime agent id: ${RUNTIME_AGENT_ID}
-- Primary session key: \`${PRIMARY_SESSION_KEY}\`
-- Workspace: ${REPO_DIR}
-- Agent config dir: .fleetclaw/agents/${AGENT_ID}
-- Focus: ${FOCUS}
-- Task summary: ${AGENT_TASK_SUMMARY}
-- Status file: \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\`
-- Git diff: \`git diff --stat\`
-- Recent commits: \`git log --oneline -5\`
-ROSTERAGENTEOF
+        if [[ -n "${ROSTER_ENTRIES_BLOCK}" ]]; then
+            ROSTER_ENTRIES_BLOCK+=$'\n\n'
+        fi
+        ROSTER_ENTRIES_BLOCK+="## ${AGENT_ID}"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Runtime agent id: ${RUNTIME_AGENT_ID}"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Primary session key: \`${PRIMARY_SESSION_KEY}\`"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Workspace: ${REPO_DIR}"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Agent config dir: .fleetclaw/agents/${AGENT_ID}"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Focus: ${FOCUS}"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Task summary: ${AGENT_TASK_SUMMARY}"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Status file: \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\`"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Git diff: \`git diff --stat\`"$'\n'
+        ROSTER_ENTRIES_BLOCK+="- Recent commits: \`git log --oneline -5\`"
     done
+
+    render_template "${ROSTER_TEMPLATE}" "${ROSTER_MD}" PROJECT_NAME ROSTER_ENTRIES_BLOCK
 
     log "Generated ROSTER.md"
 
     # --- Generate Supervisor SOUL.md ---
     SUPERVISOR_SOUL="${SCRIPT_DIR}/generated/supervisor-SOUL.md"
-    cat > "${SUPERVISOR_SOUL}" << SOULEOF
-# Supervisor Agent — ${PROJECT_NAME}
-
-You are a development supervisor managing ${AGENT_COUNT} coding agents working on "${PROJECT_NAME}".
-
-## Fleet Layout
-- Project root: ${REPO_DIR}
-- Agent ids: ${AGENT_ID_LIST}
-- Agent config path pattern: .fleetclaw/agents/<agent-id>/
-- All agents work directly in the project root directory
-- Read \`ROSTER.md\` only when you need focus directories, task summaries, runtime agent ids, or session keys.
-
-## Core Loop (runs every ${CHECK_INTERVAL} minutes)
-
-For EACH coding agent in the fleet:
-
-1. **Read STATUS.md first** — treat it as the agent's checkpoint and request-for-decision file
-2. **Use git diff and recent commits** — inspect only the changed surface first
-3. **Check the coding agent main session first** — copy the exact \`Primary session key:\` value from \`ROSTER.md\` and use that exact string with \`session_status\`; do not shorten it or infer it from the short agent id
-4. **Use memory_search / memory_get only if historical notes are needed** — do not reread full daily logs by default
-5. **Read ROSTER.md or PROJECT.md only if the current checkpoint is ambiguous or you need runtime session metadata**
-6. **Evaluate progress** — is the agent making meaningful progress on its task?
-7. **Take action if needed:**
-   - No changes for ${STALL_TIMEOUT}+ minutes → agent is STALLED. Diagnose: read recent files, check for error patterns, then send corrective instructions via sessions_send
-   - Context usage > ${COMPACT_THRESHOLD}% → send \`/compact\` to the agent's session
-   - Agent working on wrong files (outside focus_dirs) → redirect with specific instructions
-   - Agent in a loop (same diff repeated) → send clear redirect with alternative approach
-   - STATUS.md says \`Needs supervisor decision: yes\` → send a decision before the agent continues
-   - Agent has worked for roughly ${REVIEW_CHECKPOINT_MINS}+ minutes or ${MAX_COMMITS_WITHOUT_DECISION}+ commits without a fresh decision request → require a fresh checkpoint update
-
-## Decision Protocol
-
-When an agent requests a decision, reply via sessions_send with exactly one leading decision token:
-
-- \`SUPERVISOR_DECISION: CONTINUE\`
-- \`SUPERVISOR_DECISION: REDIRECT\`
-- \`SUPERVISOR_DECISION: STOP\`
-- \`SUPERVISOR_DECISION: ACCEPT_DONE\`
-- \`SUPERVISOR_DECISION: ESCALATE\`
-
-Then include 1-3 concise bullets with the reasoning and next action.
-
-Use the decisions like this:
-
-- \`CONTINUE\` → current direction is acceptable, keep going
-- \`REDIRECT\` → change scope, ordering, or approach
-- \`STOP\` → pause implementation now
-- \`ACCEPT_DONE\` → work is accepted as complete for now
-- \`ESCALATE\` → human decision is required
-
-If STATUS.md says \`State: done\`, verify the diff/tests before sending \`ACCEPT_DONE\`.
-
-## Agent Status Format
-
-Each coding agent maintains a \`STATUS.md\` file with this shape:
-
-\`\`\`markdown
-# STATUS.md
-State: working | blocked | ready-for-review | done
-Needs supervisor decision: no | yes
-Requested decision: none | continue | redirect | stop | accept_done
-Summary: ...
-Files touched: ...
-Tests: not run | passing | failing
-Next step: ...
-Blocker: none | ...
-Last updated: YYYY-MM-DD HH:MM
-\`\`\`
-
-## Memory Policy
-
-- \`STATUS.md\` is the latest live checkpoint only. Expect it to be overwritten.
-- \`memory/YYYY-MM-DD.md\` is the historical day log. Search it with \`memory_search\`, then inspect the relevant note with \`memory_get\`.
-- \`MEMORY.md\` is for durable facts, conventions, risks, and accepted decisions that should survive beyond the current day.
-- Do not reread full daily logs unless a search result points you there.
-- When you intervene or make a durable supervision decision, append a short dated note to \`memory/YYYY-MM-DD.md\`.
-- Promote only lasting guidance or reusable lessons into \`MEMORY.md\`.
-
-## Rules
-- Do NOT write code yourself. You are a supervisor, not a coder.
-- Be specific when sending instructions to agents. Include file paths, function names, and concrete next steps.
-- Copy the coding agent's \`Primary session key:\` value from \`ROSTER.md\` verbatim for \`session_status\` and \`sessions_send\`.
-- Never derive a session key from the short agent id or task summary; \`ROSTER.md\` is authoritative.
-- If \`sessions_list\` does not show the coding agent, do not assume the agent is unreachable — use the explicit primary session key from \`ROSTER.md\`.
-- Use \`openclaw sessions --all-agents --json\` via \`exec\` only as a fallback when you need raw cross-agent session metadata.
-- If an agent is stuck on the same problem after 2 interventions, escalate: write a detailed blocker note and notify the human.
-- Keep your own context lean — you should rarely need compaction.
-SOULEOF
+    render_template "${SUPERVISOR_SOUL_TEMPLATE}" "${SUPERVISOR_SOUL}" \
+        PROJECT_NAME AGENT_COUNT REPO_DIR AGENT_ID_LIST \
+        SUPERVISOR_OBJECTIVE_BLOCK SUPERVISOR_HANDOFF_RULES_BLOCK \
+        CHECK_INTERVAL STALL_TIMEOUT COMPACT_THRESHOLD \
+        REVIEW_CHECKPOINT_MINS MAX_COMMITS_WITHOUT_DECISION
 
     log "Generated supervisor SOUL.md"
 
     # --- Generate per-agent SOUL.md ---
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
-        AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
-        AGENT_TASK=$(yq eval ".agents[$i].task" "$SCOPE_FILE")
-        FOCUS=$(yq eval ".agents[$i].focus_dirs | join(\", \")" "$SCOPE_FILE")
+        AGENT_ID="${AGENT_IDS[i]}"
+        AGENT_TASK="${AGENT_TASKS[i]}"
+        FOCUS="${AGENT_FOCUS_DIRS[i]}"
 
         AGENT_BRIEF="${SCRIPT_DIR}/generated/${AGENT_ID}-BRIEF.md"
-        cat > "${AGENT_BRIEF}" << BRIEFEOF
-# BRIEF.md
-
-Agent: ${AGENT_ID}
-Project: ${PROJECT_NAME}
-
-## Your Task
-${AGENT_TASK}
-
-## Focus Directories
-${FOCUS}
-
-## Read Order
-1. Read \`.fleetclaw/agents/${AGENT_ID}/SOUL.md\` on session start or after compaction.
-2. Read \`.fleetclaw/agents/${AGENT_ID}/BRIEF.md\` for your exact assignment and scope.
-3. Read \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\` for the latest checkpoint.
-4. Read \`.fleetclaw/agents/${AGENT_ID}/PROJECT.md\` only when you need shared project context or another agent's lane.
-5. Use \`memory_search\` / \`memory_get\` for older notes instead of rereading full daily logs.
-BRIEFEOF
+        render_template "${AGENT_BRIEF_TEMPLATE}" "${AGENT_BRIEF}" \
+            AGENT_ID PROJECT_NAME AGENT_TASK FOCUS
 
         log "Generated ${AGENT_ID} BRIEF.md"
 
         AGENT_SOUL="${SCRIPT_DIR}/generated/${AGENT_ID}-SOUL.md"
-        cat > "${AGENT_SOUL}" << CODERSOULEOF
-# Agent: ${AGENT_ID}
-# Project: ${PROJECT_NAME}
-
-You are a coding agent working on "${PROJECT_NAME}".
-
-## Your Task
-${AGENT_TASK}
-
-## Constraints
-- Only modify files in your focus directories: ${FOCUS}
-- Do NOT modify files outside your scope — other agents own those
-- Commit frequently with descriptive messages prefixed with [${AGENT_ID}]
-- If you encounter a dependency on another agent's work, write a note to BLOCKERS.md and continue with a stub/mock
-- Read BRIEF.md for your exact scope; read PROJECT.md only when you need wider project context
-- Keep \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\` current; the supervisor uses it to accept, redirect, or stop your work
-
-## Your Config Directory
-Your agent-specific files are in: \`.fleetclaw/agents/${AGENT_ID}/\`
-- STATUS.md, BRIEF.md, MEMORY.md, memory/ are all there
-- You work directly in the project root, creating files in your focus directories
-
-## Workflow
-1. Read \`.fleetclaw/agents/${AGENT_ID}/BRIEF.md\`, then \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\`; skim MEMORY.md only if durable past decisions matter
-2. Plan your approach — write it to \`.fleetclaw/agents/${AGENT_ID}/PLAN.md\`
-3. Implement incrementally in your focus directories (${FOCUS}), committing after each logical unit
-4. After each logical unit, refresh \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\` with the latest short factual checkpoint only
-5. Run tests after each significant change
-6. Use memory_search / memory_get to retrieve old notes instead of rereading full memory/YYYY-MM-DD.md files
-7. If a stop rule triggers, update STATUS.md, request a decision, and stop active implementation until the supervisor responds
-
-## Memory Policy
-- \`.fleetclaw/agents/${AGENT_ID}/STATUS.md\` is current-state only. Keep only the latest checkpoint there.
-- \`.fleetclaw/agents/${AGENT_ID}/memory/YYYY-MM-DD.md\` is a historical log for dated notes, dead ends, and short summaries of important work.
-- \`.fleetclaw/agents/${AGENT_ID}/MEMORY.md\` is for durable facts, conventions, accepted decisions, and reusable lessons.
-- Do not reread full daily logs by default. Search old notes with \`memory_search\`, then inspect the relevant note with \`memory_get\`.
-- When you finish a meaningful chunk, add a brief dated memory note if future-you or the supervisor will need the history.
-- When you discover something that should survive beyond the day, update \`MEMORY.md\`.
-
-## Communication
-- The supervisor checks your progress every ${CHECK_INTERVAL} minutes via git diff
-- If the supervisor sends you instructions, prioritize them
-- Write blockers to BLOCKERS.md so the supervisor can help
-- Supervisor decisions arrive with one of these leading tokens:
-  - \`SUPERVISOR_DECISION: CONTINUE\`
-  - \`SUPERVISOR_DECISION: REDIRECT\`
-  - \`SUPERVISOR_DECISION: STOP\`
-  - \`SUPERVISOR_DECISION: ACCEPT_DONE\`
-  - \`SUPERVISOR_DECISION: ESCALATE\`
-
-## STATUS.md Format
-\`\`\`markdown
-# STATUS.md
-State: working | blocked | ready-for-review | done
-Needs supervisor decision: no | yes
-Requested decision: none | continue | redirect | stop | accept_done
-Summary: ...
-Files touched: ...
-Tests: not run | passing | failing
-Next step: ...
-Blocker: none | ...
-Last updated: YYYY-MM-DD HH:MM
-\`\`\`
-
-## Stop Rules
-Stop and request a supervisor decision when ANY of these happen:
-
-1. You believe the current task is complete or ready for acceptance
-2. You have made about ${MAX_COMMITS_WITHOUT_DECISION} commits or worked about ${REVIEW_CHECKPOINT_MINS} minutes since the last supervisor decision
-3. You need to go outside your focus directories or make a risky architecture change
-4. You are blocked by failing tests, unclear requirements, or repeated rework
-
-When a stop rule triggers:
-
-1. Update STATUS.md
-2. Set \`Needs supervisor decision: yes\`
-3. Set \`Requested decision:\` to the closest match
-4. Stop active implementation and wait for the supervisor
-CODERSOULEOF
+        render_template "${AGENT_SOUL_TEMPLATE}" "${AGENT_SOUL}" \
+            AGENT_ID PROJECT_NAME AGENT_TASK FOCUS CHECK_INTERVAL \
+            MAX_COMMITS_WITHOUT_DECISION REVIEW_CHECKPOINT_MINS
 
         log "Generated ${AGENT_ID} SOUL.md"
 
         AGENT_STATUS="${SCRIPT_DIR}/generated/${AGENT_ID}-STATUS.md"
-        cat > "${AGENT_STATUS}" << STATUSEOF
-# STATUS.md
-State: working
-Needs supervisor decision: no
-Requested decision: none
-Summary: Not started yet.
-Files touched: none
-Tests: not run
-Next step: Read PROJECT.md, write PLAN.md, and start the first logical unit.
-Blocker: none
-Last updated: $(date '+%Y-%m-%d %H:%M')
-STATUSEOF
+        GENERATED_STATUS_TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
+        render_template "${AGENT_STATUS_TEMPLATE}" "${AGENT_STATUS}" GENERATED_STATUS_TIMESTAMP
 
         log "Generated ${AGENT_ID} STATUS.md"
     done
@@ -784,9 +778,9 @@ STATUSEOF
     }"
 
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
-        AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
-        AGENT_MODEL_JSON=$(resolve_model_json ".agents[$i].model // .advanced.default_agent_model // \"openai-codex/gpt-5.4\"")
-        RUNTIME_AGENT_ID="$(agent_runtime_id "${AGENT_ID}")"
+        AGENT_ID="${AGENT_IDS[i]}"
+        AGENT_MODEL_JSON="${AGENT_MODEL_JSONS[i]}"
+        RUNTIME_AGENT_ID="${AGENT_RUNTIME_IDS[i]}"
         FLEET_AGENT_RUNTIME_IDS_JSON+=", \"${RUNTIME_AGENT_ID}\""
 
         AGENTS_JSON+=",{
@@ -816,6 +810,8 @@ STATUSEOF
   },
 "
     fi
+
+    CLI_BACKENDS_CONFIG_JSON="$(resolve_cli_backend_config_json)"
 
     GATEWAY_BIND="${FLEETCLAW_GATEWAY_BIND}"
     WSL_ORIGIN_ENTRY=""
@@ -861,7 +857,7 @@ ${AUTH_CONFIG_BLOCK}  gateway: {
     defaults: {
       model: ${SUPERVISOR_MODEL_JSON},
       workspace: "${PROFILE_ROOT}/workspace",
-      heartbeat: {
+${CLI_BACKENDS_CONFIG_JSON}      heartbeat: {
         every: "2m"
       },
       compaction: {
@@ -896,7 +892,7 @@ CONFIGEOF
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENCLAW_CMD=(openclaw --profile "${PROJECT_PROFILE}")
+OPENCLAW_CMD=("${OPENCLAW_BIN}" --profile "${PROJECT_PROFILE}")
 
 find_job_id() {
     local job_name="\$1"
@@ -972,7 +968,7 @@ CRONEOF
 
     # --- Copy SOUL.md + BRIEF.md + STATUS.md to each agent's config dir ---
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
-        AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
+        AGENT_ID="${AGENT_IDS[i]}"
         AGENT_CONFIG_DIR="${FLEETCLAW_AGENTS_DIR}/${AGENT_ID}"
         AGENT_SOUL="${SCRIPT_DIR}/generated/${AGENT_ID}-SOUL.md"
         AGENT_BRIEF="${SCRIPT_DIR}/generated/${AGENT_ID}-BRIEF.md"

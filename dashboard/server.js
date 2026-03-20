@@ -43,16 +43,47 @@ function resolveProfile(scope) {
   return raw ? slugify(raw) : slugify(scope.project.name);
 }
 
+function resolveProfileConfigPath(profile) {
+  return path.join(process.env.HOME, `.openclaw-${profile}`, 'openclaw.json');
+}
+
+function resolveGatewayConfigFromProfileFile(profile) {
+  const profileConfigPath = resolveProfileConfigPath(profile);
+  if (!fs.existsSync(profileConfigPath)) return null;
+
+  try {
+    const raw = fs.readFileSync(profileConfigPath, 'utf8');
+    const portMatch = raw.match(/\bgateway:\s*\{[\s\S]*?\bport:\s*(\d+)/);
+    const tokenMatch = raw.match(/\bgateway:\s*\{[\s\S]*?\bauth:\s*\{[\s\S]*?\btoken:\s*"([^"]+)"/);
+
+    return {
+      gateway: {
+        port: portMatch ? parseInt(portMatch[1], 10) : null,
+        auth: { token: tokenMatch ? tokenMatch[1] : null },
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
 function resolveGatewayConfig(profile) {
+  const fromProfileFile = resolveGatewayConfigFromProfileFile(profile);
+  if (fromProfileFile) {
+    return fromProfileFile;
+  }
+
   try {
     const get = (key) => execSync(
       `openclaw --profile ${profile} config get ${key} 2>/dev/null`,
       { encoding: 'utf8', timeout: 5000 }
     ).trim();
+
+    const token = get('gateway.auth.token');
     return {
       gateway: {
         port: parseInt(get('gateway.port'), 10) || null,
-        auth: { token: get('gateway.auth.token') || null },
+        auth: { token: token && token !== '__OPENCLAW_REDACTED__' ? token : null },
       }
     };
   } catch { return null; }
@@ -82,6 +113,29 @@ function buildGatewayUrl(port, token, pathname = '/', params = null) {
     url.hash = `token=${encodeURIComponent(token)}`;
   }
   return url.toString();
+}
+
+function sendBrowserRedirect(res, target) {
+  const escapedTarget = JSON.stringify(target);
+  res
+    .status(200)
+    .type('html')
+    .send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redirecting...</title>
+  <meta http-equiv="refresh" content="0;url=${target}">
+</head>
+<body>
+  <p>Redirecting...</p>
+  <p><a href="${target}">Continue</a></p>
+  <script>
+    window.location.replace(${escapedTarget});
+  </script>
+</body>
+</html>`);
 }
 
 function readMdFile(filePath) {
@@ -236,7 +290,7 @@ app.get('/openclaw', (req, res) => {
   const target = buildGatewayUrl(gateway.port, gateway.token);
 
   if (!target) return res.status(503).send('OpenClaw gateway is not configured');
-  res.redirect(target);
+  sendBrowserRedirect(res, target);
 });
 
 app.get('/openclaw/agent/:id', (req, res) => {
@@ -254,7 +308,7 @@ app.get('/openclaw/agent/:id', (req, res) => {
   const target = buildGatewayUrl(gateway.port, gateway.token, '/chat', { session: `agent:${runtimeId}:main` });
 
   if (!target) return res.status(503).send('OpenClaw gateway is not configured');
-  res.redirect(target);
+  sendBrowserRedirect(res, target);
 });
 
 app.get('/openclaw/supervisor', (req, res) => {
@@ -266,7 +320,7 @@ app.get('/openclaw/supervisor', (req, res) => {
   const target = buildGatewayUrl(gateway.port, gateway.token, '/chat', { session: `agent:${runtimeId}:main` });
 
   if (!target) return res.status(503).send('OpenClaw gateway is not configured');
-  res.redirect(target);
+  sendBrowserRedirect(res, target);
 });
 
 app.get('/api/agent/:id/file/:filename', (req, res) => {

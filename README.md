@@ -49,6 +49,25 @@ cp project-scope.example.yaml project-scope.yaml
 ### 2. Edit project-scope.yaml
 
 Define your project, supervisor config, and coding agents with their tasks and focus directories.
+Keep settings in `project-scope.yaml`, and move long prose into normal files with `*_file` keys when you do not want to paste it inline.
+
+```yaml
+project:
+  name: "my-project"
+  repo: "."
+  description_file: "prompts/project.md"
+
+supervisor:
+  objective_file: "prompts/supervisor-objective.md"
+  handoff_rules_file: "prompts/handoff-rules.md"
+
+agents:
+  - id: "frontend"
+    task_file: "tasks/frontend.md"
+    focus_dirs: ["apps/web/"]
+```
+
+Relative `*_file` paths resolve from the `fleetclaw/` directory.
 
 ### 3. Setup & Launch
 
@@ -62,12 +81,24 @@ Define your project, supervisor config, and coding agents with their tasks and f
 - **OpenClaw UI**: http://localhost:{port}/ (port shown after launch)
 - **FleetClaw Dashboard**: `cd dashboard && npm install && node server.js` → http://localhost:3333
 
+## Authoring Model
+
+FleetClaw now treats `project-scope.yaml` as the configuration source of truth.
+
+- Keep project settings, models, cadence, and lane ownership in `project-scope.yaml`
+- Reference long-form prose with `project.description_file`, `supervisor.objective_file`, `supervisor.handoff_rules_file`, and `agents[].task_file`
+- Override the built-in document templates with `advanced.template_dir` only if you need custom generated `SOUL.md` / `BRIEF.md` shapes
+- Treat `.fleetclaw/agents/...` as generated runtime state, not setup-time authoring files
+
+This means public users only need to maintain one config file plus any optional imported Markdown/text files they choose to reference.
+
 ## Architecture
 
 ```
 your-project/
   fleetclaw/              # Framework (this repo)
     project-scope.yaml    # Your project config
+    templates/            # Default templates for generated docs
     setup.sh              # Bootstrap everything
     launch.sh             # Start the fleet
     dashboard/            # Local monitoring UI

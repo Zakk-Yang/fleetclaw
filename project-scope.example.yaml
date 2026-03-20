@@ -10,12 +10,15 @@
 #       launch.sh
 #       dashboard/
 #     src/                    <-- your project code
+# Long prose can stay in normal Markdown/text files and be referenced with
+# *_file keys below. If both inline text and *_file are set, the file wins.
 # ============================================================
 
 project:
   name: "my-project"               # Project name (used for profile, slugs, etc.)
   repo: "."                        # "." means use parent directory as project root
   branch: "main"                   # Base branch name
+  description_file: ""             # Optional: path relative to fleetclaw/ for shared project context
   description: |
     Describe your project here. This is shared with all agents as context.
 
@@ -31,11 +34,18 @@ supervisor:
   notify_target: ""               # Optional: channel/user to notify
   morning_report_hour: ""         # Optional: hour (0-23) for daily summary
   morning_report_tz: "UTC"
+  objective_file: ""              # Optional: path relative to fleetclaw/ for supervisor objective
+  objective: |                    # Optional: project-specific supervisor objective
+    Describe what the supervisor is trying to coordinate.
+  handoff_rules_file: ""          # Optional: path relative to fleetclaw/ for coordination rules
+  handoff_rules: |                # Optional: explicit inter-agent gating rules
+    Define when one agent's work is ready for another agent to depend on it.
 
 agents:
   - id: "developer"               # Unique agent ID (lowercase, no spaces)
     model: "openai-codex/gpt-5.4"
     thinking: "xhigh"
+    task_file: ""                 # Optional: path relative to fleetclaw/ for the full task brief
     task: |
       Describe the agent's task here. Be specific about what to build,
       what technologies to use, and what the output should look like.
@@ -57,5 +67,6 @@ advanced:
   openclaw_profile: ""             # Override OpenClaw profile name (default: slugified project name)
   gateway_port: ""                 # Override gateway port (default: auto-derived)
   default_agent_model: "openai-codex/gpt-5.4"
+  template_dir: ""                 # Optional: custom template directory (default: fleetclaw/templates)
   shared_files:
     - "PROJECT.md"

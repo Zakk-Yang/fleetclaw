@@ -115,7 +115,7 @@ echo ""
 echo "--- Step 3: Git Bootstrap ---"
 info "Project root: ${PROJECT_ROOT}"
 if ! git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree &>/dev/null; then
-    git -C "${PROJECT_ROOT}" init -q
+    git -C "${PROJECT_ROOT}" init -q -b "${PROJECT_BRANCH}"
     git -C "${PROJECT_ROOT}" add -A 2>/dev/null || true
     git -C "${PROJECT_ROOT}" commit -q -m "FleetClaw: initialize project repo" 2>/dev/null || true
     log "Initialized git in project root"

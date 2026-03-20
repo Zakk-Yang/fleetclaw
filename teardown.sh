@@ -13,7 +13,7 @@ if [[ ! -f "$SCOPE_FILE" ]]; then
     exit 0
 fi
 
-require_cmds yq git openclaw
+require_cmds git openclaw
 
 PROJECT_NAME=$(yq eval '.project.name' "$SCOPE_FILE")
 PROJECT_REPO=$(yq eval '.project.repo' "$SCOPE_FILE")
