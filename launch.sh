@@ -35,6 +35,7 @@ yval_default() { yq eval "$1 // \"$2\"" "$SCOPE_FILE"; }
 PROJECT_NAME=$(yval '.project.name')
 PROJECT_SLUG=$(slugify "${PROJECT_NAME}")
 PROJECT_PROFILE="$(resolve_openclaw_profile_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
+PROJECT_BRANCH=$(yval_default '.project.branch' 'main')
 
 AGENT_COUNT=$(yq eval '.agents | length' "$SCOPE_FILE")
 WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")"
@@ -59,6 +60,11 @@ fi
 
 OPENCLAW_CMD=(openclaw --profile "${PROJECT_PROFILE}")
 SUPERVISOR_WS="${WORKTREE_BASE}/supervisor-workspace"
+DASHBOARD_PORT="$(resolve_dashboard_port_from_scope "${SCOPE_FILE}" "${PROJECT_PROFILE}" "${GATEWAY_PORT}")"
+DASHBOARD_DIR="${SCRIPT_DIR}/dashboard"
+DASHBOARD_PID_FILE="${SCRIPT_DIR}/generated/dashboard.pid"
+DASHBOARD_LOG_FILE="${SCRIPT_DIR}/generated/dashboard.log"
+DASHBOARD_INSTALL_LOG_FILE="${SCRIPT_DIR}/generated/dashboard-install.log"
 
 agent_runtime_id() {
     printf '%s-%s\n' "${PROJECT_SLUG}" "$1"
@@ -68,6 +74,123 @@ resolve_thinking_level() {
     local expr="$1"
     local default_value="${2:-}"
     yq eval "${expr} // \"${default_value}\"" "$SCOPE_FILE"
+}
+
+dashboard_port_available() {
+    python3 - "${FLEETCLAW_DASHBOARD_HOST}" "${DASHBOARD_PORT}" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+sock = socket.socket()
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    sock.bind((host, port))
+except OSError:
+    raise SystemExit(1)
+finally:
+    sock.close()
+PY
+}
+
+stop_dashboard_if_running() {
+    if [[ ! -f "${DASHBOARD_PID_FILE}" ]]; then
+        return 0
+    fi
+
+    local pid
+    pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+        kill "${pid}" >/dev/null 2>&1 || true
+        sleep 1
+    fi
+    rm -f "${DASHBOARD_PID_FILE}"
+}
+
+ensure_dashboard_dependencies() {
+    if [[ ! -d "${DASHBOARD_DIR}" ]]; then
+        warn "Dashboard directory not found at ${DASHBOARD_DIR}"
+        return 1
+    fi
+
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+        warn "Node.js/npm not available — skipping automatic dashboard startup"
+        return 1
+    fi
+
+    if [[ -d "${DASHBOARD_DIR}/node_modules" ]]; then
+        return 0
+    fi
+
+    info "Installing dashboard dependencies..."
+    if (cd "${DASHBOARD_DIR}" && npm ci --no-audit --no-fund >"${DASHBOARD_INSTALL_LOG_FILE}" 2>&1); then
+        log "Dashboard dependencies installed"
+        return 0
+    fi
+
+    warn "Dashboard dependency install failed — see ${DASHBOARD_INSTALL_LOG_FILE}"
+    return 1
+}
+
+start_dashboard() {
+    if ! ensure_dashboard_dependencies; then
+        return 1
+    fi
+
+    stop_dashboard_if_running
+
+    if ! dashboard_port_available; then
+        warn "Dashboard port ${DASHBOARD_PORT} is already in use — skipping automatic startup"
+        return 1
+    fi
+
+    python3 - "${DASHBOARD_DIR}" "${DASHBOARD_PORT}" "${FLEETCLAW_DASHBOARD_HOST}" "${DASHBOARD_LOG_FILE}" "${DASHBOARD_PID_FILE}" <<'PY'
+import os
+import subprocess
+import sys
+
+cwd, port, host, log_path, pid_path = sys.argv[1:]
+env = dict(os.environ)
+env["PORT"] = port
+env["HOST"] = host
+
+with open(log_path, "ab", buffering=0) as log_handle:
+    proc = subprocess.Popen(
+        ["node", "server.js"],
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=log_handle,
+        stderr=log_handle,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+with open(pid_path, "w", encoding="utf-8") as pid_handle:
+    pid_handle.write(str(proc.pid))
+PY
+
+    sleep 2
+
+    local pid
+    pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
+    if command -v lsof >/dev/null 2>&1; then
+        local listening_pid
+        listening_pid="$(lsof -ti "tcp:${DASHBOARD_PORT}" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+        if [[ -n "${listening_pid}" ]]; then
+            pid="${listening_pid}"
+            printf '%s\n' "${pid}" >"${DASHBOARD_PID_FILE}"
+        fi
+    fi
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+        log "Dashboard started on http://${FLEETCLAW_DASHBOARD_HOST}:${DASHBOARD_PORT}/"
+        return 0
+    fi
+
+    warn "Dashboard process exited early — see ${DASHBOARD_LOG_FILE}"
+    rm -f "${DASHBOARD_PID_FILE}"
+    return 1
 }
 
 echo ""
@@ -163,6 +286,14 @@ nohup "${SUPERVISOR_SEED_ARGS[@]}" >/dev/null 2>&1 &
 log "Supervisor seeded (heartbeat + cron will keep it active)"
 echo ""
 
+# --- Step 6: Start dashboard ---
+echo "--- Step 6: Dashboard ---"
+DASHBOARD_STARTED=0
+if start_dashboard; then
+    DASHBOARD_STARTED=1
+fi
+echo ""
+
 # --- Summary ---
 echo "=========================================="
 echo "  ✅ Fleet Launched"
@@ -173,12 +304,19 @@ DASHBOARD_HOST="${FLEETCLAW_DASHBOARD_HOST}"
 # Try to extract token from gateway status
 GATEWAY_TOKEN=$("${OPENCLAW_CMD[@]}" gateway status 2>&1 | sed -n 's/.*token=\([a-f0-9]*\).*/\1/p' | head -1 || true)
 if [[ -n "${GATEWAY_TOKEN}" ]]; then
-    DASHBOARD_URL="http://${DASHBOARD_HOST}:${GATEWAY_PORT}/#token=${GATEWAY_TOKEN}"
+    OPENCLAW_UI_URL="http://${DASHBOARD_HOST}:${GATEWAY_PORT}/#token=${GATEWAY_TOKEN}"
 else
-    DASHBOARD_URL="http://${DASHBOARD_HOST}:${GATEWAY_PORT}/"
+    OPENCLAW_UI_URL="http://${DASHBOARD_HOST}:${GATEWAY_PORT}/"
 fi
 
-info "Dashboard: ${DASHBOARD_URL}"
+DASHBOARD_URL="http://${DASHBOARD_HOST}:${DASHBOARD_PORT}/"
+
+if [[ "${DASHBOARD_STARTED}" -eq 1 ]]; then
+    info "FleetClaw dashboard: ${DASHBOARD_URL}"
+else
+    warn "FleetClaw dashboard was not started automatically"
+fi
+info "OpenClaw UI: ${OPENCLAW_UI_URL}"
 echo ""
 echo "Agent sessions:"
 for i in $(seq 0 $((AGENT_COUNT - 1))); do
@@ -192,6 +330,7 @@ echo "Useful commands:"
 echo "  ${OPENCLAW_CMD[*]} gateway status      # Check gateway health"
 echo "  ${OPENCLAW_CMD[*]} agents list          # List registered agents"
 echo "  ${OPENCLAW_CMD[*]} cron list            # List cron jobs"
+echo "  tail -f ${DASHBOARD_LOG_FILE}           # Watch dashboard log"
 echo "  ${OPENCLAW_CMD[*]} agent --agent ${SUPERVISOR_RUNTIME_ID} --message \"Check progress now\""
 echo ""
 echo "  Watch supervisor:"

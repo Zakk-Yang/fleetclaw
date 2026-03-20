@@ -118,6 +118,39 @@ resolve_project_root_path() {
     return 1
 }
 
+stable_project_slot() {
+    python3 - "$1" <<'PY'
+import hashlib
+import sys
+
+value = sys.argv[1].encode("utf-8")
+digest = hashlib.sha1(value).hexdigest()
+print(int(digest[:8], 16) % 400)
+PY
+}
+
+resolve_dashboard_port_from_scope() {
+    local scope_file="$1"
+    local profile_name="${2:-$(resolve_openclaw_profile_from_scope "$scope_file")}"
+    local gateway_port="${3:-}"
+    local configured_port
+
+    configured_port="$(yq eval '.advanced.dashboard_port // ""' "$scope_file")"
+    if [[ -n "${configured_port}" && "${configured_port}" != "null" ]]; then
+        printf '%s\n' "${configured_port}"
+        return 0
+    fi
+
+    if [[ -n "${gateway_port}" && "${gateway_port}" != "null" ]]; then
+        printf '%s\n' "$((gateway_port + 1))"
+        return 0
+    fi
+
+    local slot
+    slot="$(stable_project_slot "${profile_name}")"
+    printf '%s\n' "$((19002 + slot * 20))"
+}
+
 resolve_context_limit_for_profile() {
     local profile_name="$1"
     local sessions_json

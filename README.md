@@ -73,13 +73,14 @@ Relative `*_file` paths resolve from the `fleetclaw/` directory.
 
 ```bash
 ./setup.sh    # Creates agent configs, OpenClaw profile, cron jobs
-./launch.sh   # Starts gateway, enables heartbeat, seeds agent sessions
+./launch.sh   # Starts gateway, dashboard, heartbeat, and agent sessions
 ```
 
 ### 4. Monitor
 
 - **OpenClaw UI**: http://localhost:{port}/ (port shown after launch)
-- **FleetClaw Dashboard**: `cd dashboard && npm install && node server.js` → http://localhost:3333
+- **FleetClaw Dashboard**: starts automatically during `launch.sh` at http://localhost:{dashboard_port}
+- The dashboard now shows both estimated Markdown read-set percentages and live session context usage percentages
 
 ## Authoring Model
 
@@ -130,10 +131,10 @@ your-project/
 | `check-markdown-budget.sh` | Estimate the Markdown read-set load for supervisor/agents as a % of the context window |
 | `check-context.sh` | Show live session token usage and context pressure from OpenClaw |
 | `setup.sh` | Parse scope, create agent dirs, generate OpenClaw config, cron jobs |
-| `launch.sh` | Start gateway, install crons, enable heartbeat, seed sessions |
+| `launch.sh` | Start gateway, dashboard, install crons, enable heartbeat, seed sessions |
 | `status-report.sh` | Print agent checkpoints, supervisor notes, markdown budget, and live context usage |
 | `sync.sh` | Summarize shared-repo state; no merge step is needed in direct-workspace mode |
-| `teardown.sh` | Disable heartbeat, remove crons, and clean generated files |
+| `teardown.sh` | Stop dashboard, disable heartbeat, remove crons, and clean generated files |
 
 ## Prerequisites
 

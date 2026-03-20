@@ -25,6 +25,30 @@ PROFILE_ROOT="${HOME}/.openclaw-${OPENCLAW_PROFILE}"
 OPENCLAW_CMD=(openclaw --profile "${OPENCLAW_PROFILE}")
 PROGRESS_CRON_NAME="${PROJECT_SLUG}-supervisor-progress-check"
 MORNING_CRON_NAME="${PROJECT_SLUG}-supervisor-morning-report"
+GATEWAY_PORT="$("${OPENCLAW_CMD[@]}" config get gateway.port 2>/dev/null || true)"
+DASHBOARD_PORT="$(resolve_dashboard_port_from_scope "${SCOPE_FILE}" "${OPENCLAW_PROFILE}" "${GATEWAY_PORT}")"
+DASHBOARD_PID_FILE="${SCRIPT_DIR}/generated/dashboard.pid"
+
+stop_dashboard_if_running() {
+    local pid=""
+    if [[ -f "${DASHBOARD_PID_FILE}" ]]; then
+        pid="$(cat "${DASHBOARD_PID_FILE}" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "${pid}" ]] && command -v lsof >/dev/null 2>&1; then
+        pid="$(lsof -ti "tcp:${DASHBOARD_PORT}" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+    fi
+
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+        kill "${pid}" >/dev/null 2>&1 || true
+        sleep 1
+        log "Dashboard stopped"
+    elif [[ -f "${DASHBOARD_PID_FILE}" ]]; then
+        warn "Dashboard pid file was stale"
+    fi
+
+    rm -f "${DASHBOARD_PID_FILE}"
+}
 
 find_job_id() {
     local job_name="$1"
@@ -53,12 +77,16 @@ echo "OpenClaw profile: ${OPENCLAW_PROFILE}"
 echo "Project root: ${PROJECT_ROOT}"
 echo ""
 
-read -p "This will disable heartbeat, remove cron jobs, and clean generated files. Continue? (y/N) " -n 1 -r
+read -p "This will stop the dashboard, disable heartbeat, remove cron jobs, and clean generated files. Continue? (y/N) " -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 0
 fi
+
+# Stop dashboard
+warn "Stopping dashboard..."
+stop_dashboard_if_running
 
 # Remove cron jobs
 warn "Removing cron jobs..."

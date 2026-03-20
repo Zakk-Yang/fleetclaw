@@ -6,31 +6,64 @@
 <title>FleetClaw Dashboard</title>
 <style>
   :root {
-    --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
-    --green: #3fb950; --yellow: #d29922; --red: #f85149; --purple: #bc8cff;
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-alt: #10161f;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
   }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
   .header h1 { font-size: 18px; font-weight: 600; }
-  .header .tag { font-size: 12px; background: var(--border); padding: 2px 8px; border-radius: 12px; color: var(--muted); }
-  .header .refresh-btn { margin-left: auto; background: var(--border); border: none; color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .header .tag { font-size: 12px; background: var(--border); padding: 2px 8px; border-radius: 999px; color: var(--muted); }
+  .header .refresh-btn {
+    margin-left: auto;
+    background: var(--border);
+    border: none;
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
   .header .refresh-btn:hover { background: var(--accent); color: #000; }
+  .auto-refresh { font-size: 11px; color: var(--muted); }
 
-  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-
+  .container { max-width: 1440px; margin: 0 auto; padding: 20px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   .grid-full { grid-column: 1 / -1; }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .card-header h2 { font-size: 14px; font-weight: 600; }
   .card-body { padding: 16px; }
-  .card-body pre { font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--muted); max-height: 400px; overflow-y: auto; }
+  .card-body pre {
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--muted);
+    max-height: 400px;
+    overflow-y: auto;
+  }
 
   .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
   .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 180px; flex: 1; }
@@ -38,32 +71,69 @@
   .kpi .value { font-size: 22px; font-weight: 600; }
   .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .status-badge,
+  .usage-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
   .status-working { background: #1a3a1a; color: var(--green); }
   .status-blocked { background: #3a1a1a; color: var(--red); }
   .status-done { background: #1a2a3a; color: var(--accent); }
   .status-ready-for-review { background: #2a2a1a; color: var(--yellow); }
   .status-unknown { background: var(--border); color: var(--muted); }
+  .usage-ok { background: #1a3a1a; color: var(--green); }
+  .usage-warning { background: #2a2a1a; color: var(--yellow); }
+  .usage-compact { background: #3a1a1a; color: var(--red); }
 
   .agent-card { margin-bottom: 12px; }
   .agent-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .agent-header h3 { font-size: 15px; }
   .agent-meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 12px 0 0 0; }
-  .tab { padding: 8px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); background: none; border-top: none; border-left: none; border-right: none; }
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 12px 0 0 0; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 16px;
+    font-size: 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-content { display: none; padding: 12px 0; }
   .tab-content.active { display: block; }
 
-  .field-row { display: flex; gap: 8px; margin-bottom: 4px; font-size: 13px; }
-  .field-label { color: var(--muted); min-width: 140px; }
+  .field-row { display: flex; gap: 8px; margin-bottom: 4px; font-size: 13px; flex-wrap: wrap; }
+  .field-label { color: var(--muted); min-width: 160px; }
   .field-value { color: var(--text); }
+  .subtle { color: var(--muted); font-size: 12px; }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin: 14px 0 6px 0; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 
-  .auto-refresh { font-size: 11px; color: var(--muted); }
+  .table-wrap { overflow-x: auto; }
+  table.metrics-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .metrics-table th,
+  .metrics-table td {
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  .metrics-table th { color: var(--muted); font-weight: 600; }
+  .metrics-table td.right,
+  .metrics-table th.right { text-align: right; }
 
-  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .header .refresh-btn { margin-left: 0; }
+  }
 </style>
 </head>
 <body>
@@ -80,43 +150,183 @@
 </div>
 
 <script>
-let projectData = null;
-let agentsData = null;
+let dashboardData = null;
 
 async function fetchAll() {
-  const [p, a] = await Promise.all([
-    fetch('/api/project').then(r => r.json()),
-    fetch('/api/agents').then(r => r.json()),
-  ]);
-  projectData = p;
-  agentsData = a;
+  const response = await fetch('/api/dashboard');
+  if (!response.ok) {
+    throw new Error(`Dashboard API failed: ${response.status}`);
+  }
+  dashboardData = await response.json();
   render();
 }
 
 function statusClass(state) {
   if (!state) return 'status-unknown';
-  const s = state.toLowerCase();
-  if (s === 'working') return 'status-working';
-  if (s === 'blocked') return 'status-blocked';
-  if (s === 'done') return 'status-done';
-  if (s.includes('review')) return 'status-ready-for-review';
+  const value = state.toLowerCase();
+  if (value === 'working') return 'status-working';
+  if (value === 'blocked') return 'status-blocked';
+  if (value === 'done') return 'status-done';
+  if (value.includes('review')) return 'status-ready-for-review';
   return 'status-unknown';
 }
 
-function esc(str) {
-  if (!str) return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function usageClass(status) {
+  if (status === 'COMPACT NOW') return 'usage-compact';
+  if (status === 'WARNING') return 'usage-warning';
+  return 'usage-ok';
+}
+
+function esc(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function fmtPct(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+  return `${Number(value).toFixed(2)}%`;
+}
+
+function fmtInt(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  return number.toLocaleString();
+}
+
+function renderUsageBadge(status) {
+  if (!status) return '<span class="usage-badge status-unknown">unknown</span>';
+  return `<span class="usage-badge ${usageClass(status)}">${esc(status)}</span>`;
+}
+
+function renderBudgetSummary(budget) {
+  if (!budget || !budget.startup || !budget.withShared) return 'No budget snapshot yet';
+  return `${fmtPct(budget.startup.usagePct)} startup / ${fmtPct(budget.withShared.usagePct)} with shared`;
+}
+
+function renderSessionSummary(session) {
+  if (!session) return 'No tokens reported yet';
+  return `${fmtPct(session.usagePct)} (${fmtInt(session.totalTokens)} / ${fmtInt(session.contextTokens)})`;
+}
+
+function renderMarkdownTable(rows) {
+  if (!rows.length) {
+    return '<div class="subtle">No markdown budget data yet.</div>';
+  }
+
+  const body = rows.map((row) => `
+    <tr>
+      <td>${esc(row.roleId)}</td>
+      <td>${esc(row.readSet)}</td>
+      <td class="right mono">${fmtInt(row.fileCount)}</td>
+      <td class="right mono">${fmtInt(row.tokens)}</td>
+      <td class="right mono">${fmtPct(row.usagePct)}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="table-wrap">
+      <table class="metrics-table">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Read set</th>
+            <th class="right">Files</th>
+            <th class="right">Tokens</th>
+            <th class="right">Usage</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderLiveTable(rows) {
+  if (!rows.length) {
+    return '<div class="subtle">No live sessions are reporting token usage yet.</div>';
+  }
+
+  const body = rows.map((row) => `
+    <tr>
+      <td>${esc(row.displayAgentId)}</td>
+      <td>${esc(row.sessionLabel)}</td>
+      <td class="right mono">${fmtInt(row.totalTokens)}</td>
+      <td class="right mono">${fmtInt(row.contextTokens)}</td>
+      <td class="right mono">${fmtPct(row.usagePct)}</td>
+      <td>${renderUsageBadge(row.status)}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="table-wrap">
+      <table class="metrics-table">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Session</th>
+            <th class="right">Tokens</th>
+            <th class="right">Limit</th>
+            <th class="right">Usage</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderCronTable(rows) {
+  if (!rows || !rows.length) {
+    return '<div class="subtle">No supervisor cron runs are reporting token usage yet.</div>';
+  }
+
+  const body = rows.map((row) => `
+    <tr>
+      <td>${esc(row.sessionLabel)}</td>
+      <td class="right mono">${fmtInt(row.totalTokens)}</td>
+      <td class="right mono">${fmtInt(row.contextTokens)}</td>
+      <td class="right mono">${fmtPct(row.usagePct)}</td>
+      <td>${renderUsageBadge(row.status)}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="table-wrap">
+      <table class="metrics-table">
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th class="right">Tokens</th>
+            <th class="right">Limit</th>
+            <th class="right">Usage</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function render() {
+  const projectData = dashboardData.project;
+  const agents = dashboardData.agents || [];
+  const supervisor = dashboardData.supervisor || {};
+  const metrics = dashboardData.metrics || { markdown: { rows: [] }, live: { rows: [] } };
+
   document.getElementById('project-name').textContent = projectData.name;
   document.title = `FleetClaw - ${projectData.name}`;
   document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
-  // KPIs
-  const agents = agentsData.agents || [];
-  const working = agents.filter(a => a.statusFields.state === 'working').length;
-  const blocked = agents.filter(a => a.statusFields.state === 'blocked').length;
+  const working = agents.filter((agent) => agent.statusFields.state === 'working').length;
+  const blocked = agents.filter((agent) => agent.statusFields.state === 'blocked').length;
+  const commitCount = projectData.git.log ? projectData.git.log.split('\n').filter(Boolean).length : 0;
+  const maxLive = metrics.live?.maxUsagePct || 0;
+  const maxMarkdown = metrics.markdown?.maxUsagePct || 0;
 
   document.getElementById('kpis').innerHTML = `
     <div class="kpi">
@@ -126,71 +336,92 @@ function render() {
     </div>
     <div class="kpi">
       <div class="label">Supervisor</div>
-      <div class="value">Every ${projectData.supervisor.checkInterval}m</div>
-      <div class="sub">${projectData.supervisor.model}</div>
+      <div class="value">Every ${esc(projectData.supervisor.checkInterval)}m</div>
+      <div class="sub">${esc(projectData.supervisor.model)}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Max Live Context</div>
+      <div class="value">${fmtPct(maxLive)}</div>
+      <div class="sub">Threshold ${fmtPct(metrics.live?.threshold || 0)}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Max Instruction Load</div>
+      <div class="value">${fmtPct(maxMarkdown)}</div>
+      <div class="sub">${esc(metrics.markdown?.estimator || 'chars/4')} estimate</div>
     </div>
     <div class="kpi">
       <div class="label">Git Branch</div>
       <div class="value">${esc(projectData.git.branch)}</div>
-      <div class="sub">${projectData.git.log.split('\n').length} recent commits</div>
+      <div class="sub">${commitCount} recent commits</div>
     </div>
     <div class="kpi">
-      <div class="label">Gateway</div>
-      <div class="value">:${projectData.gateway.port || '?'}</div>
-      <div class="sub">${projectData.gateway.openclawUrl ? `<a href="${projectData.gateway.openclawUrl}" target="_blank">Open OpenClaw UI</a>` : 'not configured'}</div>
+      <div class="label">Dashboard</div>
+      <div class="value">:${esc(projectData.dashboard.port)}</div>
+      <div class="sub"><a href="${esc(projectData.dashboard.url)}" target="_blank">Open dashboard</a></div>
     </div>
   `;
 
   const openclawLinks = [
     projectData.gateway.openclawUrl ? `<a href="${projectData.gateway.openclawUrl}" target="_blank">Open OpenClaw UI</a>` : '',
-    agentsData.supervisor?.sessionUrl ? `<a href="${agentsData.supervisor.sessionUrl}" target="_blank">Open supervisor chat</a>` : '',
+    supervisor.sessionUrl ? `<a href="${supervisor.sessionUrl}" target="_blank">Open supervisor chat</a>` : '',
   ].filter(Boolean).join(' | ');
 
-  // Main grid
+  const changedFiles = projectData.git.changedFiles || [];
+  let changedHtml = '';
+  if (changedFiles.length > 0) {
+    changedHtml = '<table class="metrics-table">';
+    changedHtml += '<thead><tr><th>Modified</th><th>File</th><th>Status</th></tr></thead><tbody>';
+    for (const file of changedFiles) {
+      const time = file.mtime ? new Date(file.mtime).toLocaleTimeString() : '-';
+      const status = file.untracked ? '<span style="color:var(--green)">new</span>' : '<span style="color:var(--yellow)">modified</span>';
+      changedHtml += `<tr><td class="mono">${time}</td><td>${esc(file.file)}</td><td>${status}</td></tr>`;
+    }
+    changedHtml += '</tbody></table>';
+    if (projectData.git.diffSummary) {
+      changedHtml += `<div class="subtle" style="margin-top:8px">${esc(projectData.git.diffSummary)}</div>`;
+    }
+  }
+
   let html = '';
 
-  // Gateway card
   html += `
     <div class="card">
       <div class="card-header"><h2>Gateway</h2></div>
       <div class="card-body">
         <div class="field-row"><span class="field-label">Profile</span><span class="field-value">${esc(projectData.profile)}</span></div>
-        <div class="field-row"><span class="field-label">Port</span><span class="field-value">${projectData.gateway.port}</span></div>
+        <div class="field-row"><span class="field-label">OpenClaw port</span><span class="field-value">${esc(projectData.gateway.port || '-')}</span></div>
+        <div class="field-row"><span class="field-label">Dashboard port</span><span class="field-value">${esc(projectData.dashboard.port)}</span></div>
         <div class="field-row"><span class="field-label">Links</span></div>
         <div class="field-value" style="font-size:13px">${openclawLinks || 'not configured'}</div>
       </div>
     </div>
   `;
 
-  // Git card
-  const changedFiles = projectData.git.changedFiles || [];
-  let changedHtml = '';
-  if (changedFiles.length > 0) {
-    changedHtml = '<table style="width:100%;font-size:12px;margin-top:8px;border-collapse:collapse">';
-    changedHtml += '<tr style="color:var(--muted);text-align:left"><th style="padding:4px 8px">Modified</th><th style="padding:4px 8px">File</th><th style="padding:4px 8px">Status</th></tr>';
-    for (const f of changedFiles) {
-      const time = f.mtime ? new Date(f.mtime).toLocaleTimeString() : '-';
-      const status = f.untracked ? '<span style="color:var(--green)">new</span>' : '<span style="color:var(--yellow)">modified</span>';
-      changedHtml += `<tr style="border-top:1px solid var(--border)"><td style="padding:4px 8px;color:var(--muted);white-space:nowrap">${time}</td><td style="padding:4px 8px;word-break:break-all">${esc(f.file)}</td><td style="padding:4px 8px">${status}</td></tr>`;
-    }
-    changedHtml += '</table>';
-    if (projectData.git.diffSummary) {
-      changedHtml += `<div style="margin-top:8px;font-size:12px;color:var(--muted)">${esc(projectData.git.diffSummary)}</div>`;
-    }
-  }
-
   html += `
     <div class="card">
       <div class="card-header"><h2>Git</h2></div>
       <div class="card-body">
-        <pre>${esc(projectData.git.log)}</pre>
-        <br><strong>Unstaged changes (${changedFiles.length}):</strong>
-        ${changedFiles.length > 0 ? changedHtml : '<br><span style="font-size:12px;color:var(--green)">Working tree clean</span>'}
+        <pre>${esc(projectData.git.log || 'No git history yet')}</pre>
+        <div class="section-title">Unstaged Changes (${changedFiles.length})</div>
+        ${changedFiles.length > 0 ? changedHtml : '<span class="subtle" style="color:var(--green)">Working tree clean</span>'}
       </div>
     </div>
   `;
 
-  // Agent cards
+  html += `
+    <div class="card grid-full">
+      <div class="card-header"><h2>Context Budget</h2></div>
+      <div class="card-body">
+        <div class="field-row"><span class="field-label">Instruction estimate</span><span class="field-value">${esc(metrics.markdown?.estimator || 'chars/4')} against ${fmtInt(metrics.markdown?.contextLimit || 0)} tokens</span></div>
+        <div class="field-row"><span class="field-label">Compaction threshold</span><span class="field-value">${fmtPct(metrics.live?.threshold || 0)}</span></div>
+        <div class="section-title">Markdown Read Sets</div>
+        ${renderMarkdownTable(metrics.markdown?.rows || [])}
+        <div class="section-title">Live Session Usage</div>
+        ${renderLiveTable(metrics.live?.rows || [])}
+      </div>
+    </div>
+  `;
+
   for (const agent of agents) {
     const state = agent.statusFields.state || 'unknown';
     html += `
@@ -203,9 +434,11 @@ function render() {
         <div class="card-body">
           <div class="agent-header">
             <div class="agent-meta">
-              Model: ${esc(String(agent.model))} | Focus: ${esc(agent.focusDirs.join(', '))} | Thinking: ${esc(agent.thinking)}
+              Model: ${esc(agent.model)} | Focus: ${esc(agent.focusDirs.join(', '))} | Thinking: ${esc(agent.thinking)}
             </div>
           </div>
+          <div class="field-row"><span class="field-label">Instruction load</span><span class="field-value">${renderBudgetSummary(agent.instructionBudget)}</span></div>
+          <div class="field-row"><span class="field-label">Main session context</span><span class="field-value">${renderSessionSummary(agent.mainSession)}</span></div>
           <div class="field-row"><span class="field-label">Summary</span><span class="field-value">${esc(agent.statusFields.summary || '-')}</span></div>
           <div class="field-row"><span class="field-label">Next step</span><span class="field-value">${esc(agent.statusFields['next step'] || '-')}</span></div>
           <div class="field-row"><span class="field-label">Blocker</span><span class="field-value">${esc(agent.statusFields.blocker || 'none')}</span></div>
@@ -231,50 +464,56 @@ function render() {
     `;
   }
 
-  // Supervisor card
-  const sup = agentsData.supervisor;
   html += `
     <div class="card grid-full">
       <div class="card-header">
         <h2>Supervisor</h2>
-        ${sup.sessionUrl ? `<a href="${sup.sessionUrl}" target="_blank" style="margin-left:auto;font-size:12px;">Open session</a>` : ''}
+        ${supervisor.sessionUrl ? `<a href="${supervisor.sessionUrl}" target="_blank" style="margin-left:auto;font-size:12px;">Open session</a>` : ''}
       </div>
       <div class="card-body">
+        <div class="field-row"><span class="field-label">Instruction load</span><span class="field-value">${supervisor.instructionBudget?.coreLoop && supervisor.instructionBudget?.withShared ? `${fmtPct(supervisor.instructionBudget.coreLoop.usagePct)} core loop / ${fmtPct(supervisor.instructionBudget.withShared.usagePct)} with shared` : 'No budget snapshot yet'}</span></div>
+        <div class="field-row"><span class="field-label">Main session context</span><span class="field-value">${renderSessionSummary(supervisor.mainSession)}</span></div>
+        <div class="section-title">Recent Cron Runs</div>
+        ${renderCronTable(supervisor.cronSessions || [])}
+
         <div class="tabs" data-agent="supervisor">
           <button class="tab active" data-tab="roster">ROSTER</button>
           <button class="tab" data-tab="sup-memory">Latest Memory</button>
           <button class="tab" data-tab="sup-status">STATUS</button>
         </div>
-        <div class="tab-content active" data-agent="supervisor" data-tab="roster"><pre>${esc(sup.roster || 'No ROSTER.md')}</pre></div>
-        <div class="tab-content" data-agent="supervisor" data-tab="sup-memory"><pre>${esc(sup.latestMemory || 'No memory logs yet')}</pre></div>
-        <div class="tab-content" data-agent="supervisor" data-tab="sup-status"><pre>${esc(sup.status || 'No STATUS.md')}</pre></div>
+        <div class="tab-content active" data-agent="supervisor" data-tab="roster"><pre>${esc(supervisor.roster || 'No ROSTER.md')}</pre></div>
+        <div class="tab-content" data-agent="supervisor" data-tab="sup-memory"><pre>${esc(supervisor.latestMemory || 'No memory logs yet')}</pre></div>
+        <div class="tab-content" data-agent="supervisor" data-tab="sup-status"><pre>${esc(supervisor.status || 'No STATUS.md')}</pre></div>
       </div>
     </div>
   `;
 
   document.getElementById('main-grid').innerHTML = html;
 
-  // Bind tab clicks
-  document.querySelectorAll('.tabs').forEach(tabBar => {
-    tabBar.querySelectorAll('.tab').forEach(tab => {
+  document.querySelectorAll('.tabs').forEach((tabBar) => {
+    tabBar.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => {
         const agent = tabBar.dataset.agent;
         const tabName = tab.dataset.tab;
-        tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tabBar.querySelectorAll('.tab').forEach((button) => button.classList.remove('active'));
         tab.classList.add('active');
-        document.querySelectorAll(`.tab-content[data-agent="${agent}"]`).forEach(tc => {
-          tc.classList.toggle('active', tc.dataset.tab === tabName);
+        document.querySelectorAll(`.tab-content[data-agent="${agent}"]`).forEach((content) => {
+          content.classList.toggle('active', content.dataset.tab === tabName);
         });
       });
     });
   });
 }
 
-function refresh() { fetchAll(); }
+function refresh() {
+  fetchAll().catch((error) => {
+    console.error(error);
+    document.getElementById('main-grid').innerHTML = `<div class="card grid-full"><div class="card-body"><pre>${esc(error.message)}</pre></div></div>`;
+  });
+}
 
-// Auto-refresh every 30 seconds
-fetchAll();
-setInterval(fetchAll, 10000); // 10 seconds
+refresh();
+setInterval(refresh, 10000);
 </script>
 </body>
 </html>
