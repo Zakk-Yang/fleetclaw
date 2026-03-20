@@ -987,6 +987,8 @@ CRONEOF
 
     # --- Summary ---
     echo ""
+    bash "${SCRIPT_DIR}/check-markdown-budget.sh"
+    echo ""
     echo "=========================================="
     echo "  ✅ Setup Complete"
     echo "=========================================="

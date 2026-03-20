@@ -16,6 +16,7 @@ enable_jq_fallback
 REPO_ROOT="$(resolve_scope_root "${SCRIPT_DIR}")"
 SCOPE_FILE="${REPO_ROOT}/project-scope.yaml"
 CHECK_CONTEXT_SCRIPT="${REPO_ROOT}/check-context.sh"
+CHECK_MARKDOWN_BUDGET_SCRIPT="${REPO_ROOT}/check-markdown-budget.sh"
 
 if [[ ! -f "$SCOPE_FILE" ]]; then
     echo "No project-scope.yaml found."
@@ -132,6 +133,13 @@ else
 fi
 
 # --- Context usage ---
+echo ""
+if [[ ! -f "$CHECK_MARKDOWN_BUDGET_SCRIPT" ]]; then
+    echo "Markdown budget unavailable: ${CHECK_MARKDOWN_BUDGET_SCRIPT} is missing."
+else
+    bash "${CHECK_MARKDOWN_BUDGET_SCRIPT}"
+fi
+
 echo ""
 if [[ ! -x "$CHECK_CONTEXT_SCRIPT" ]]; then
     echo "Context usage unavailable: ${CHECK_CONTEXT_SCRIPT} is missing or not executable."

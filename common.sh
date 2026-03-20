@@ -118,6 +118,77 @@ resolve_project_root_path() {
     return 1
 }
 
+resolve_context_limit_for_profile() {
+    local profile_name="$1"
+    local sessions_json
+    local config_value
+    local resolved_limit=""
+
+    if command -v openclaw >/dev/null 2>&1; then
+        sessions_json="$(openclaw --profile "${profile_name}" sessions --all-agents --json 2>/dev/null || true)"
+        if [[ -n "${sessions_json}" ]]; then
+            resolved_limit="$(python3 - "${sessions_json}" <<'PY'
+import json
+import sys
+
+payload_raw = sys.argv[1]
+if not payload_raw:
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(payload_raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+sessions = payload.get("sessions") if isinstance(payload, dict) else []
+if not isinstance(sessions, list):
+    raise SystemExit(0)
+
+limits = []
+for session in sessions:
+    if not isinstance(session, dict):
+        continue
+    value = session.get("contextTokens")
+    if isinstance(value, int) and value > 0:
+        limits.append(value)
+
+if limits:
+    print(max(limits))
+PY
+)"
+        fi
+
+        if [[ -z "${resolved_limit}" ]]; then
+            config_value="$(openclaw --profile "${profile_name}" config get agents.defaults.contextTokens --json 2>/dev/null || true)"
+            if [[ -n "${config_value}" ]]; then
+                resolved_limit="$(python3 - "${config_value}" <<'PY'
+import json
+import sys
+
+raw = sys.argv[1]
+if not raw:
+    raise SystemExit(0)
+
+try:
+    value = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+if isinstance(value, int) and value > 0:
+    print(value)
+PY
+)"
+            fi
+        fi
+    fi
+
+    if [[ -z "${resolved_limit}" ]]; then
+        resolved_limit="200000"
+    fi
+
+    printf '%s\n' "${resolved_limit}"
+}
+
 detect_platform() {
     if [[ "$(uname -s)" == "Darwin" ]]; then
         FLEETCLAW_PLATFORM="macos"
