@@ -518,6 +518,11 @@ main() {
     PROJECT_REPO=$(yval '.project.repo')
     PROJECT_BRANCH=$(yval_default '.project.branch' 'main')
     PROJECT_DESC=$(resolve_scope_text '.project.description' '.project.description_file' '' 'project.description')
+    PROJECT_REVIEW_URL=$(yval_default '.project.review_url' '')
+    PROJECT_REVIEW_COMMAND=$(yval_default '.project.review_command' '')
+    PROJECT_DESIGN_REVIEW_COMMAND=$(yval_default '.project.design_review_command' '')
+    PROJECT_REVIEW_NOTES=$(yval_default '.project.review_notes' '')
+    PROJECT_REVIEW_BLOCK="Review surface not declared in project-scope.yaml."
 
     SUPERVISOR_MODEL_JSON=$(resolve_model_json '.supervisor.model // "anthropic/claude-sonnet-4-6"')
     SUPERVISOR_MODEL_LABEL=$(resolve_model_label '.supervisor.model.primary // .supervisor.model // "anthropic/claude-sonnet-4-6"')
@@ -535,6 +540,7 @@ main() {
     SUPERVISOR_HANDOFF_RULES=$(resolve_scope_text '.supervisor.handoff_rules' '.supervisor.handoff_rules_file' '' 'supervisor handoff rules')
     SUPERVISOR_OBJECTIVE_BLOCK=""
     SUPERVISOR_HANDOFF_RULES_BLOCK=""
+    SUPERVISOR_REVIEW_SURFACE_BLOCK=""
     TEMPLATE_DIR="$(resolve_template_dir)"
     PROJECT_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "PROJECT.md.tpl")"
     MEMORY_TEMPLATE="$(template_path "${TEMPLATE_DIR}" "MEMORY.md.tpl")"
@@ -591,8 +597,34 @@ main() {
         warn "No auth.profiles block was found in the default OpenClaw config. The dedicated FleetClaw profile will be generated without provider auth mappings."
     fi
 
+    if [[ -n "${PROJECT_REVIEW_URL}" || -n "${PROJECT_REVIEW_COMMAND}" || -n "${PROJECT_DESIGN_REVIEW_COMMAND}" || -n "${PROJECT_REVIEW_NOTES}" ]]; then
+        PROJECT_REVIEW_BLOCK=""
+        if [[ -n "${PROJECT_REVIEW_URL}" ]]; then
+            PROJECT_REVIEW_BLOCK+="- **Primary review URL:** ${PROJECT_REVIEW_URL}"$'\n'
+        fi
+        if [[ -n "${PROJECT_REVIEW_COMMAND}" ]]; then
+            PROJECT_REVIEW_BLOCK+="- **Primary review command:** \`${PROJECT_REVIEW_COMMAND}\`"$'\n'
+        fi
+        if [[ -n "${PROJECT_DESIGN_REVIEW_COMMAND}" ]]; then
+            PROJECT_REVIEW_BLOCK+="- **Alternate design/mock review command:** \`${PROJECT_DESIGN_REVIEW_COMMAND}\`"$'\n'
+        fi
+        if [[ -n "${PROJECT_REVIEW_NOTES}" ]]; then
+            PROJECT_REVIEW_BLOCK+="- **Notes:** ${PROJECT_REVIEW_NOTES}"
+        else
+            PROJECT_REVIEW_BLOCK="${PROJECT_REVIEW_BLOCK%$'\n'}"
+        fi
+    fi
+
     SUPERVISOR_OBJECTIVE_BLOCK="$(build_optional_section "Project-Specific Objective" "${SUPERVISOR_OBJECTIVE}")"
     SUPERVISOR_HANDOFF_RULES_BLOCK="$(build_optional_section "Project-Specific Coordination Rules" "${SUPERVISOR_HANDOFF_RULES}")"
+    if [[ "${PROJECT_REVIEW_BLOCK}" != "Review surface not declared in project-scope.yaml." ]]; then
+        SUPERVISOR_REVIEW_SURFACE_TEXT="Treat the following as the primary review surface for this project:
+
+${PROJECT_REVIEW_BLOCK}
+
+When accepting user-facing work, verify that this primary review surface reflects the approved integrated state. Mock, stub, or design-only modes may remain available, but they should not silently remain the main review path after a dependency handoff is accepted."
+        SUPERVISOR_REVIEW_SURFACE_BLOCK="$(build_optional_section "Project Review Surface" "${SUPERVISOR_REVIEW_SURFACE_TEXT}")"
+    fi
 
     info "Project: ${PROJECT_NAME} (${AGENT_COUNT} coding agents)"
     info "OpenClaw profile: ${PROJECT_PROFILE}"
@@ -675,7 +707,7 @@ main() {
     done
 
     render_template "${PROJECT_TEMPLATE}" "${PROJECT_MD}" \
-        PROJECT_NAME PROJECT_DESC PROJECT_REPO PROJECT_BRANCH TEAM_OVERVIEW_BLOCK
+        PROJECT_NAME PROJECT_DESC PROJECT_REPO PROJECT_BRANCH PROJECT_REVIEW_BLOCK TEAM_OVERVIEW_BLOCK
 
     log "Generated PROJECT.md"
 
@@ -726,6 +758,7 @@ main() {
     render_template "${SUPERVISOR_SOUL_TEMPLATE}" "${SUPERVISOR_SOUL}" \
         PROJECT_NAME AGENT_COUNT REPO_DIR AGENT_ID_LIST \
         SUPERVISOR_OBJECTIVE_BLOCK SUPERVISOR_HANDOFF_RULES_BLOCK \
+        SUPERVISOR_REVIEW_SURFACE_BLOCK \
         CHECK_INTERVAL STALL_TIMEOUT COMPACT_THRESHOLD \
         REVIEW_CHECKPOINT_MINS MAX_COMMITS_WITHOUT_DECISION
 

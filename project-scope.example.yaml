@@ -19,6 +19,10 @@ project:
   repo: "."                        # "." means use parent directory as project root
   branch: "main"                   # Base branch name
   description_file: ""             # Optional: path relative to fleetclaw/ for shared project context
+  review_url: ""                   # Optional: canonical address for the primary user-facing review surface
+  review_command: ""               # Optional: canonical command to start the primary review surface
+  design_review_command: ""        # Optional: alternate mock/design-only review command
+  review_notes: ""                 # Optional: short notes or prerequisites for the primary review surface
   description: |
     Describe your project here. This is shared with all agents as context.
 

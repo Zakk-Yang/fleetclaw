@@ -8,7 +8,7 @@ You are a development supervisor managing {{AGENT_COUNT}} coding agents working 
 - Agent config path pattern: .fleetclaw/agents/<agent-id>/
 - All agents work directly in the project root directory
 - Read `ROSTER.md` only when you need focus directories, task summaries, runtime agent ids, or session keys.
-{{SUPERVISOR_OBJECTIVE_BLOCK}}{{SUPERVISOR_HANDOFF_RULES_BLOCK}}
+{{SUPERVISOR_OBJECTIVE_BLOCK}}{{SUPERVISOR_HANDOFF_RULES_BLOCK}}{{SUPERVISOR_REVIEW_SURFACE_BLOCK}}
 
 ## Core Loop (runs every {{CHECK_INTERVAL}} minutes)
 

@@ -56,6 +56,9 @@ project:
   name: "my-project"
   repo: "."
   description_file: "prompts/project.md"
+  review_url: "http://127.0.0.1:4173/"
+  review_command: "cd apps/web && npm run dev:collector -- --host 127.0.0.1 --port 4173"
+  design_review_command: "cd apps/web && npm run dev -- --host 127.0.0.1 --port 4174"
 
 supervisor:
   objective_file: "prompts/supervisor-objective.md"
@@ -87,11 +90,14 @@ Relative `*_file` paths resolve from the `fleetclaw/` directory.
 FleetClaw now treats `project-scope.yaml` as the configuration source of truth.
 
 - Keep project settings, models, cadence, and lane ownership in `project-scope.yaml`
+- Declare the primary review surface with `project.review_url` / `project.review_command` when the accepted state depends on a specific runtime path
 - Reference long-form prose with `project.description_file`, `supervisor.objective_file`, `supervisor.handoff_rules_file`, and `agents[].task_file`
 - Override the built-in document templates with `advanced.template_dir` only if you need custom generated `SOUL.md` / `BRIEF.md` shapes
 - Treat `.fleetclaw/agents/...` as generated runtime state, not setup-time authoring files
 
 This means public users only need to maintain one config file plus any optional imported Markdown/text files they choose to reference.
+
+If your project has both a mock/design mode and a live/integrated review mode, declare both in `project-scope.yaml`. FleetClaw will render the primary review surface into `PROJECT.md` and the supervisor prompt so acceptance decisions can target the right runtime.
 
 ## Architecture
 
