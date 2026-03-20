@@ -342,7 +342,7 @@ echo ""
 DASHBOARD_HOST="${FLEETCLAW_DASHBOARD_HOST}"
 
 # Try to extract token from gateway status
-GATEWAY_TOKEN=$("${OPENCLAW_CMD[@]}" gateway status 2>&1 | grep -oP 'token=\K[a-f0-9]+' | head -1 || true)
+GATEWAY_TOKEN=$("${OPENCLAW_CMD[@]}" gateway status 2>&1 | sed -n 's/.*token=\([a-f0-9]*\).*/\1/p' | head -1 || true)
 if [[ -n "${GATEWAY_TOKEN}" ]]; then
     DASHBOARD_URL="http://${DASHBOARD_HOST}:${GATEWAY_PORT}/#token=${GATEWAY_TOKEN}"
 else

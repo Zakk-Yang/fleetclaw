@@ -122,7 +122,7 @@ for i in $(seq 0 $((AGENT_COUNT - 1))); do
     # Check STATUS.md for agent state
     AGENT_STATE="unknown"
     if [[ -f "${WORKTREE_PATH}/STATUS.md" ]]; then
-        AGENT_STATE=$(grep -oP 'State: \K.*' "${WORKTREE_PATH}/STATUS.md" 2>/dev/null || echo "unknown")
+        AGENT_STATE=$(sed -n 's/^State: //p' "${WORKTREE_PATH}/STATUS.md" 2>/dev/null || echo "unknown")
     fi
 
     info "${AGENT_ID}: ${AHEAD} commits ahead (state: ${AGENT_STATE})"
