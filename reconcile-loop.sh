@@ -11,5 +11,7 @@ fi
 
 while true; do
     bash "${SCRIPT_DIR}/reconcile-status.sh" --quiet || true
+    bash "${SCRIPT_DIR}/sync-supervisor-cron.sh" --quiet || true
+    bash "${SCRIPT_DIR}/project-status.sh" --quiet || true
     sleep "${INTERVAL_SECS}"
 done

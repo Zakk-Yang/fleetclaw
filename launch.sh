@@ -331,6 +331,8 @@ RECONCILER_STARTED=0
 if start_reconciler; then
     RECONCILER_STARTED=1
 fi
+bash "${SCRIPT_DIR}/sync-supervisor-cron.sh" --quiet || true
+bash "${SCRIPT_DIR}/project-status.sh" --quiet || true
 echo ""
 
 # --- Step 6: Start dashboard ---
@@ -386,6 +388,7 @@ echo "Useful commands:"
 echo "  ${OPENCLAW_CMD[*]} gateway status      # Check gateway health"
 echo "  ${OPENCLAW_CMD[*]} agents list          # List registered agents"
 echo "  ${OPENCLAW_CMD[*]} cron list            # List cron jobs"
+echo "  bash ${SCRIPT_DIR}/project-status.sh    # Refresh project overall status"
 echo "  tail -f ${DASHBOARD_LOG_FILE}           # Watch dashboard log"
 echo "  tail -f ${RECONCILE_LOG_FILE}           # Watch status reconciler log"
 echo "  ${OPENCLAW_CMD[*]} agent --agent ${SUPERVISOR_RUNTIME_ID} --message \"Check progress now\""

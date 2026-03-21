@@ -16,6 +16,7 @@ const FEEDBACK_HISTORY_LIMIT = 12;
 const CONTROL_PLANE_HISTORY_LIMIT = 20;
 const CONTROL_PLANE_ANALYTICS_LIMIT = 500;
 const DASHBOARD_SNAPSHOT_FILE_NAME = 'dashboard-metrics.jsonl';
+const PROJECT_STATUS_FILE_NAME = 'PROJECT_STATUS.md';
 const DASHBOARD_SNAPSHOT_HISTORY_LIMIT = 720;
 const DASHBOARD_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 const BURN_RATE_WINDOW_HOURS = 6;
@@ -1318,6 +1319,9 @@ function buildHumanFeedbackMessage(entry) {
     lines.push('Review this feedback, reproduce the issue if needed, and route the next decision to the correct lane.');
     if (entry.blocksAcceptance) {
       lines.push('Treat this as blocking review feedback and do not accept the current review build until it is resolved.');
+    } else {
+      lines.push('If this resolves an open blocker or environment issue, send the affected lane a follow-up decision immediately so it can leave blocked state.');
+      lines.push('Use ACCEPT_DONE when the work was already acceptable and only the blocker remained; otherwise use CONTINUE or REDIRECT.');
     }
   } else {
     lines.push('Treat this as direct human feedback for your lane. If coordination is needed, update STATUS.md and request a supervisor decision before continuing.');
@@ -1537,6 +1541,9 @@ function buildDashboardPayload() {
 
   const projectSlug = slugify(scope.project.name);
   const fleetclawDir = path.join(projectRoot, '.fleetclaw', 'agents');
+  const projectStatusPath = path.join(projectRoot, '.fleetclaw', PROJECT_STATUS_FILE_NAME);
+  const projectStatusRaw = readMdFile(projectStatusPath);
+  const projectStatusFields = parseStatusFields(projectStatusRaw);
   const supervisorRuntimeId = `${projectSlug}-supervisor`;
   const agents = (scope.agents || []).map((agent) => {
     const agentDir = path.join(fleetclawDir, agent.id);
@@ -1628,6 +1635,11 @@ function buildDashboardPayload() {
         pollingFallback: scope?.protocol?.polling_fallback ?? true,
         agentToSupervisorMaxTokens: scope?.protocol?.agent_to_supervisor_max_tokens || 80,
         supervisorToAgentMaxTokens: scope?.protocol?.supervisor_to_agent_max_tokens || 120,
+      },
+      status: {
+        raw: projectStatusRaw,
+        fields: projectStatusFields,
+        lastUpdatedDisplay: resolveStatusLastUpdatedDisplay(projectStatusFields, projectStatusPath),
       },
       git,
     },

@@ -96,6 +96,7 @@ For a full runtime-state wipe without deleting your project files:
 - The dashboard also shows compact control-plane traffic so you can inspect recent agent notifications and supervisor decisions
 - The dashboard also includes a human feedback form that routes review notes into the supervisor loop by default and keeps a recent submission trail
 - FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
+- FleetClaw writes `.fleetclaw/PROJECT_STATUS.md` with an overall fleet summary and automatically idles the supervisor progress cron when every coding lane is done
 
 ## Authoring Model
 
@@ -123,6 +124,7 @@ your-project/
     launch.sh             # Start the fleet
     dashboard/            # Local monitoring UI
   .fleetclaw/             # Generated at setup (gitignored)
+    PROJECT_STATUS.md     # Overall fleet summary + review guidance
     bin/                  # Compact notification helpers
     agents/
       <agent-id>/         # Per-agent config files
@@ -145,7 +147,9 @@ your-project/
 - Decisions: `CONTINUE`, `REDIRECT`, `STOP`, `ACCEPT_DONE`, `ESCALATE`
 - Polling remains the fallback while notification delivery is being proven
 - If the agent misses an `ACCEPT_DONE` update, FleetClaw reconciles the checkpoint from recorded session history instead of waiting forever
+- If an external blocker is later resolved, the supervisor should send a clearing decision so the lane can leave `blocked` and settle on `done` or the next active state
 - There is no default coding-agent heartbeat; supervisor cron (configurable) is the periodic review loop
+- When every coding lane reaches `done`, FleetClaw disables the supervisor progress cron until work is reopened
 
 ## Scripts
 
@@ -153,10 +157,12 @@ your-project/
 |--------|---------|
 | `check-markdown-budget.sh` | Estimate the Markdown read-set load for supervisor/agents as a % of the context window |
 | `check-context.sh` | Show live session token usage and context pressure from OpenClaw |
+| `project-status.sh` | Write `.fleetclaw/PROJECT_STATUS.md` with overall fleet state, review surface, and next action |
 | `reconcile-status.sh` | Reconcile stale agent checkpoints from recorded supervisor decisions |
 | `reconcile-loop.sh` | Background loop that runs `reconcile-status.sh` automatically after launch |
 | `review-runtime-settings.sh` | Inspect heartbeat, compaction, retention, and cron settings for the dedicated profile |
 | `setup.sh` | Parse scope, create agent dirs, generate OpenClaw config, cron jobs |
+| `sync-supervisor-cron.sh` | Disable the supervisor progress cron when all lanes are done, and re-enable it if work reopens |
 | `launch.sh` | Start gateway, dashboard, install crons, and seed sessions |
 | `status-report.sh` | Print agent checkpoints, supervisor notes, markdown budget, and live context usage |
 | `sync.sh` | Summarize shared-repo state; no merge step is needed in direct-workspace mode |

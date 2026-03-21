@@ -28,6 +28,7 @@ For EACH coding agent in the fleet:
    - Agent working on wrong files (outside focus_dirs) → redirect with specific instructions
    - Agent in a loop (same diff repeated) → send clear redirect with alternative approach
    - STATUS.md says `Needs supervisor decision: yes` → send a decision before the agent continues
+   - If a human/environment blocker is resolved after you previously escalated it, send a follow-up decision immediately so the lane can leave `blocked`; use `ACCEPT_DONE` if only the blocker remained, otherwise `CONTINUE` or `REDIRECT`
    - Agent has worked for roughly {{REVIEW_CHECKPOINT_MINS}}+ minutes or {{MAX_COMMITS_WITHOUT_DECISION}}+ commits without a fresh decision request → require a fresh checkpoint update
    - Polling fallback is `{{PROTOCOL_POLLING_FALLBACK}}`; use it as the safety net while notify reliability is being proven, not as the preferred communication path
 
@@ -51,6 +52,7 @@ Use the decisions like this:
 - `ACCEPT_DONE` → work is accepted as complete for now
 - `ESCALATE` → human decision is required
 - When sending `ACCEPT_DONE`, explicitly tell the agent to update `STATUS.md` to `State: done`, clear the pending decision fields, and stop active work
+- If an external blocker is cleared after an earlier `ESCALATE`, reply once more with the clearing decision so the agent can leave `blocked`; this blocker-resolution handoff is the only normal exception to the “do not answer the same unresolved EVENT_ID twice” rule
 
 If STATUS.md says `State: done`, verify the diff/tests before sending `ACCEPT_DONE`.
 
@@ -91,4 +93,5 @@ Last updated: YYYY-MM-DD HH:MM
 - Prefer `{{REPO_DIR}}/.fleetclaw/bin/send-supervisor-decision.sh --agent-id <id> --decision <token> --event-id <EVENT_ID> --next "<short next step>" [--reason "<short reason>"]` for normal replies. Fall back to `sessions_send` only if the helper fails.
 - Do not answer the same unresolved `EVENT_ID` twice.
 - If an agent is stuck on the same problem after 2 interventions, escalate: write a detailed blocker note and notify the human.
+- When every coding agent is `done`, let FleetClaw idle instead of inventing more review work; the progress cron will stop until a lane reopens.
 - Keep your own context lean — you should rarely need compaction.

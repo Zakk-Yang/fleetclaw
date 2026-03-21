@@ -240,6 +240,26 @@
     border: 1px solid rgba(145, 160, 179, 0.12);
   }
 
+  .project-status-panel {
+    display: grid;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(6, 11, 18, 0.5);
+    border: 1px solid rgba(145, 160, 179, 0.12);
+  }
+
+  .project-status-top {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .project-status-summary {
+    color: #d8e1ec;
+  }
+
   .hero-review code,
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -1566,6 +1586,16 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
   const analytics = metrics.analytics || {};
   const overview = analytics.overview || {};
   const sampleCount = analytics.snapshot?.sampleCount || 0;
+  const projectStatus = projectData.status || { fields: {} };
+  const projectStatusFields = projectStatus.fields || {};
+  const projectState = projectStatusFields.state || 'monitoring';
+  const projectSummary = projectStatusFields.summary || 'Project summary is warming up.';
+  const projectNextAction = projectStatusFields['next action'] || 'Inspect the role snapshot and review surface.';
+  const projectCompletedWork = projectStatusFields['completed work'] || 'none yet';
+  const projectReviewUrl = projectStatusFields['where to review'] || projectData.review?.url || '-';
+  const projectReviewCommand = projectStatusFields['review command'] || projectData.review?.command || '-';
+  const projectSupervisorCron = projectStatusFields['supervisor progress cron'] || 'unknown';
+  const projectSupervisorReason = projectStatusFields['supervisor progress reason'] || '';
 
   const openclawLinks = [
     projectData.gateway.openclawUrl ? `<a class="link-pill" href="${esc(projectData.gateway.openclawUrl)}" target="_blank">Open OpenClaw UI</a>` : '',
@@ -1604,6 +1634,21 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
             <div class="eyebrow">Project summary</div>
             <h2>${esc(projectData.name)}</h2>
             <p>${esc(projectData.description || 'FleetClaw coordination dashboard for this project.')}</p>
+          </div>
+          <div class="project-status-panel">
+            <div class="project-status-top">
+              ${renderStatusBadge(projectState)}
+              <span class="status-badge ${projectSupervisorCron === 'disabled' ? 'status-done' : (projectSupervisorCron === 'enabled' ? 'status-monitoring' : 'status-unknown')}">supervisor cron ${esc(projectSupervisorCron)}</span>
+              <span class="subtle">${esc(projectStatus.lastUpdatedDisplay || '-')}</span>
+            </div>
+            <div class="project-status-summary">${esc(projectSummary)}</div>
+            <div class="field-list">
+              <div class="field-row"><span class="field-label">Completed work</span><span class="field-value">${esc(projectCompletedWork)}</span></div>
+              <div class="field-row"><span class="field-label">Next action</span><span class="field-value">${esc(projectNextAction)}</span></div>
+              <div class="field-row"><span class="field-label">Where to review</span><span class="field-value">${projectReviewUrl && projectReviewUrl !== '-' ? `<a href="${esc(projectReviewUrl)}" target="_blank">${esc(projectReviewUrl)}</a>` : '-'}</span></div>
+              <div class="field-row"><span class="field-label">Review command</span><span class="field-value mono">${esc(projectReviewCommand)}</span></div>
+              <div class="field-row"><span class="field-label">Supervisor status</span><span class="field-value">${esc(projectSupervisorReason || 'Progress cron state is warming up.')}</span></div>
+            </div>
           </div>
           <div class="hero-links">${openclawLinks || '<span class="subtle">No links configured.</span>'}</div>
           <div class="hero-review">

@@ -49,6 +49,7 @@ Your agent-specific files are in: `.fleetclaw/agents/{{AGENT_ID}}/`
   - `SUPERVISOR_DECISION: ACCEPT_DONE`
   - `SUPERVISOR_DECISION: ESCALATE`
 - If you receive `SUPERVISOR_DECISION: ACCEPT_DONE`, immediately update `STATUS.md` to `State: done`, clear the pending decision fields, and stop active implementation until a new request arrives
+- If the supervisor says an external blocker is cleared and the accepted work is already complete, leave `blocked`, set `STATUS.md` to `done`, clear the blocker field, and stop active implementation
 
 ## STATUS.md Format
 ```markdown
