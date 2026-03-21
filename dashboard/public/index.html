@@ -920,6 +920,16 @@ function formatRate(value) {
   return `${fmtInt(Math.round(number))} tok/hr`;
 }
 
+function formatElapsedHours(value) {
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return 'warming up';
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours < 0) return 'warming up';
+  if (hours < (1 / 60)) return '<1 min';
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  if (hours < 10) return `${hours.toFixed(1)} hr`;
+  return `${Math.round(hours)} hr`;
+}
+
 function fmtTime(value) {
   if (!value) return '-';
   const parsed = new Date(value);
@@ -1667,12 +1677,12 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
             ${renderQuickStat('Accepted today', fmtInt(overview.acceptedTasksToday), 'Unique ACCEPT_DONE decisions')}
             ${renderQuickStat('Pending review', fmtInt(overview.pendingReviews), `${fmtInt(overview.diffAwaitingReviewFiles)} files awaiting review`)}
             ${renderQuickStat('Avg context', fmtPct(overview.avgContextPct), `Max ${fmtPct(overview.maxContextPct)}`)}
-            ${renderQuickStat('Burn rate', formatRate(overview.burnRate), `Sampled from ${fmtInt(sampleCount)} dashboard snapshots`)}
+            ${renderQuickStat('Project hourly tokens', formatRate(overview.projectHourlyTokens), `Elapsed ${formatElapsedHours(overview.projectElapsedHours)}`)}
             ${renderQuickStat('Supervisor share', fmtPct(overview.supervisorTokensPct), 'Main-session token share')}
-            ${renderQuickStat('Tokens live', fmtInt(overview.totalTokensCurrent), overview.totalTokensToday === null || overview.totalTokensToday === undefined ? 'Today delta warming up' : `Today +${fmtInt(overview.totalTokensToday)}`)}
+            ${renderQuickStat('Project tokens', fmtInt(overview.projectTokensCurrent), overview.projectTokensToday === null || overview.projectTokensToday === undefined ? 'Current live-session footprint' : `Today +${fmtInt(overview.projectTokensToday)}`)}
             ${renderQuickStat('Work files', fmtInt(overview.workProductFiles), 'Modified or untracked work-product files')}
           </div>
-          <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)} · Token metrics are sampled from live session totals rather than billing logs.</div>
+          <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)} · Project tokens are sampled from live session totals rather than billing logs.</div>
         </div>
       </section>
     </div>

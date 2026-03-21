@@ -19,8 +19,6 @@ const DASHBOARD_SNAPSHOT_FILE_NAME = 'dashboard-metrics.jsonl';
 const PROJECT_STATUS_FILE_NAME = 'PROJECT_STATUS.md';
 const DASHBOARD_SNAPSHOT_HISTORY_LIMIT = 720;
 const DASHBOARD_SNAPSHOT_INTERVAL_MS = 60 * 1000;
-const BURN_RATE_WINDOW_HOURS = 6;
-const BURN_RATE_IDLE_MINUTES = 15;
 const HIGH_CONTEXT_ALERT_PCT = 80;
 const HIGH_SUPERVISOR_SHARE_PCT = 45;
 const PUSH_DEGRADED_PCT = 50;
@@ -160,6 +158,16 @@ function formatRate(value, unit = 'tok/hr') {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return 'warming up';
   return `${formatInt(number)} ${unit}`;
+}
+
+function formatElapsedHours(value) {
+  if (value === null || value === undefined || value === '') return 'warming up';
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours < 0) return 'warming up';
+  if (hours < (1 / 60)) return '<1 min';
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  if (hours < 10) return `${hours.toFixed(1)} hr`;
+  return `${Math.round(hours)} hr`;
 }
 
 function formatTokenCount(value, unit = 'tok') {
@@ -911,6 +919,7 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     return state === 'blocked' || (blocker && blocker !== 'none');
   });
   const pendingAgents = agents.filter((agent) => String(agent.statusFields?.['needs supervisor decision'] || '').toLowerCase() === 'yes');
+  const allLanesDone = agents.length > 0 && agents.every((agent) => String(agent.statusFields?.state || '').toLowerCase() === 'done');
 
   const notifications = dedupeControlPlaneEntries(controlPlaneEntries, 'agent_to_supervisor');
   const decisions = dedupeControlPlaneEntries(controlPlaneEntries, 'supervisor_to_agent');
@@ -1007,41 +1016,6 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     return stamp && stamp >= startOfDay;
   });
   const firstSnapshotToday = todaySnapshots[0] || null;
-  const sixHourCutoffMs = now.getTime() - (BURN_RATE_WINDOW_HOURS * 60 * 60 * 1000);
-  const burnWindow = snapshots.filter((entry) => {
-    const stamp = parseTimestamp(entry.createdAt);
-    return stamp && stamp.getTime() >= sixHourCutoffMs;
-  });
-  const burnStart = burnWindow[0] || null;
-  const burnEnd = burnWindow[burnWindow.length - 1] || null;
-  let burnRate = null;
-  if (burnStart && burnEnd && burnStart !== burnEnd) {
-    const elapsedHours = (parseTimestamp(burnEnd.createdAt).getTime() - parseTimestamp(burnStart.createdAt).getTime()) / 3600000;
-    if (elapsedHours >= 0.25) {
-      burnRate = (Number(burnEnd.totalTokens) - Number(burnStart.totalTokens)) / elapsedHours;
-    }
-  }
-  let flatSinceMs = null;
-  if (snapshots.length >= 2) {
-    const latestSnapshot = snapshots[snapshots.length - 1];
-    const latestTotalTokens = Number(latestSnapshot.totalTokens);
-    if (Number.isFinite(latestTotalTokens)) {
-      for (let index = snapshots.length - 1; index >= 0; index -= 1) {
-        const candidate = snapshots[index];
-        if (Number(candidate.totalTokens) !== latestTotalTokens) break;
-        const stampMs = parseTimestamp(candidate.createdAt)?.getTime();
-        if (Number.isFinite(stampMs)) {
-          flatSinceMs = stampMs;
-        }
-      }
-    }
-  }
-  if (Number.isFinite(flatSinceMs)) {
-    const idleMinutes = (now.getTime() - flatSinceMs) / 60000;
-    if (idleMinutes >= BURN_RATE_IDLE_MINUTES) {
-      burnRate = 0;
-    }
-  }
   const tokensToday = todaySnapshots.length >= 2 && firstSnapshotToday
     ? Math.max(0, Math.round(totalTokensCurrent - Number(firstSnapshotToday.totalTokens || 0)))
     : null;
@@ -1051,6 +1025,35 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     .map((entry) => ({ entry, stamp: parseTimestamp(entry.createdAt) }))
     .filter((item) => item.stamp)
     .sort((left, right) => right.stamp.getTime() - left.stamp.getTime())[0] || null;
+
+  const lifecycleStartCandidates = [
+    ...controlPlaneEntries.map((entry) => parseTimestamp(entry.createdAt)),
+    ...agents.map((agent) => parseTimestamp(agent.statusFields?.['last updated'])),
+    ...snapshots.map((entry) => parseTimestamp(entry.createdAt)),
+  ].filter(Boolean);
+  const projectStartedAt = lifecycleStartCandidates.length
+    ? lifecycleStartCandidates.reduce((earliest, stamp) => (stamp < earliest ? stamp : earliest))
+    : null;
+
+  let projectUntilAt = now;
+  if (allLanesDone) {
+    const completionCandidates = [
+      ...agents
+        .filter((agent) => String(agent.statusFields?.state || '').toLowerCase() === 'done')
+        .map((agent) => parseTimestamp(agent.statusFields?.['last updated'])),
+      latestAcceptedDecision?.stamp || null,
+    ].filter(Boolean);
+    if (completionCandidates.length) {
+      projectUntilAt = completionCandidates.reduce((latest, stamp) => (stamp > latest ? stamp : latest));
+    }
+  }
+
+  const elapsedProjectHours = projectStartedAt
+    ? Math.max(0, (projectUntilAt.getTime() - projectStartedAt.getTime()) / 3600000)
+    : null;
+  const projectHourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
+    ? totalTokensCurrent / elapsedProjectHours
+    : null;
 
   const alerts = [];
   const highContextRows = mainRows.filter((row) => Number(row.usagePct) >= HIGH_CONTEXT_ALERT_PCT);
@@ -1122,9 +1125,14 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       acceptedTasksToday,
       avgContextPct,
       maxContextPct,
+      projectTokensCurrent: totalTokensCurrent,
+      projectTokensToday: tokensToday,
+      projectHourlyTokens,
+      projectElapsedHours: elapsedProjectHours,
       totalTokensCurrent,
       totalTokensToday: tokensToday,
-      burnRate,
+      burnRate: projectHourlyTokens,
+      elapsedProjectHours,
       supervisorTokensPct,
       pushTriggeredCount,
       pollTriggeredCount,
@@ -1134,9 +1142,14 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     snapshot: {
       logFile: snapshotsState.logFile,
       sampleCount: snapshots.length,
+      projectTokensCurrent: Math.round(totalTokensCurrent),
+      projectTokensToday: tokensToday,
+      projectHourlyTokens,
+      projectElapsedHours: elapsedProjectHours,
       totalTokensCurrent: Math.round(totalTokensCurrent),
       totalTokensToday: tokensToday,
-      burnRate,
+      burnRate: projectHourlyTokens,
+      elapsedProjectHours,
     },
     sections: [
       {
@@ -1145,8 +1158,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
         subtitle: 'Cost, load, and forgetting risk at the whole-fleet level.',
         metrics: [
           buildMetricCard({
-            id: 'total-tokens',
-            label: 'Total tokens',
+            id: 'project-tokens',
+            label: 'Project tokens',
             value: formatInt(totalTokensCurrent),
             secondary: Number.isFinite(Number(tokensToday))
               ? `Today +${formatInt(tokensToday)} · ${liveRows.length} live sessions`
@@ -1156,13 +1169,13 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
             tone: 'info',
           }),
           buildMetricCard({
-            id: 'burn-rate',
-            label: 'Burn rate',
-            value: formatRate(burnRate),
-            secondary: `Rolling ${BURN_RATE_WINDOW_HOURS}h window · zeros after ${BURN_RATE_IDLE_MINUTES}m flat · ${snapshots.length} samples`,
-            definition: 'How fast live session tokens are growing. If totals stay flat for a while, the metric is forced to zero so completed or idle projects do not look active.',
-            formula: '(latest sampled total tokens - earliest sampled total tokens in the rolling window) / elapsed hours',
-            tone: Number.isFinite(Number(burnRate)) && burnRate > 12000 ? 'warning' : 'info',
+            id: 'project-hourly-tokens',
+            label: 'Project hourly tokens',
+            value: formatRate(projectHourlyTokens),
+            secondary: `${allLanesDone ? 'Frozen at completion' : 'Using current project time'} · elapsed ${formatElapsedHours(elapsedProjectHours)}`,
+            definition: 'Average hourly token usage across the project lifecycle. The denominator runs from first observed project activity until now, or until completion when all lanes are done.',
+            formula: 'project tokens / elapsed project hours',
+            tone: Number.isFinite(Number(projectHourlyTokens)) && projectHourlyTokens > 12000 ? 'warning' : 'info',
           }),
           buildMetricCard({
             id: 'active-agents',
