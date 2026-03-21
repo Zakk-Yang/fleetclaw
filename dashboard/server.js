@@ -14,6 +14,16 @@ const GENERATED_DIR = path.join(SCRIPT_DIR, 'generated');
 const FEEDBACK_LOG_FILE = path.join(GENERATED_DIR, 'human-feedback.jsonl');
 const FEEDBACK_HISTORY_LIMIT = 12;
 const CONTROL_PLANE_HISTORY_LIMIT = 20;
+const CONTROL_PLANE_ANALYTICS_LIMIT = 500;
+const DASHBOARD_SNAPSHOT_FILE_NAME = 'dashboard-metrics.jsonl';
+const DASHBOARD_SNAPSHOT_HISTORY_LIMIT = 720;
+const DASHBOARD_SNAPSHOT_INTERVAL_MS = 60 * 1000;
+const BURN_RATE_WINDOW_HOURS = 6;
+const HIGH_CONTEXT_ALERT_PCT = 80;
+const HIGH_SUPERVISOR_SHARE_PCT = 45;
+const PUSH_DEGRADED_PCT = 50;
+const STALE_ACCEPT_MINUTES = 120;
+const BLOCKED_LANE_ALERT_MINUTES = 20;
 
 let cachedPayload = null;
 let cachedAt = 0;
@@ -96,6 +106,12 @@ function parseTimestamp(value) {
   return null;
 }
 
+function startOfLocalDay(date = new Date()) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
 function extractTextContent(content) {
   if (!Array.isArray(content)) return '';
   return content
@@ -103,6 +119,136 @@ function extractTextContent(content) {
     .map((item) => item.text)
     .join('\n')
     .trim();
+}
+
+function safeSum(values) {
+  return values.reduce((total, value) => total + (Number.isFinite(Number(value)) ? Number(value) : 0), 0);
+}
+
+function safeAverage(values) {
+  const valid = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!valid.length) return null;
+  return safeSum(valid) / valid.length;
+}
+
+function median(values) {
+  const valid = values.map((value) => Number(value)).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!valid.length) return null;
+  const middle = Math.floor(valid.length / 2);
+  if (valid.length % 2 === 1) return valid[middle];
+  return (valid[middle - 1] + valid[middle]) / 2;
+}
+
+function formatInt(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 'warming up';
+  return Math.round(number).toLocaleString();
+}
+
+function formatPct(value, digits = 1) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 'warming up';
+  return `${number.toFixed(digits)}%`;
+}
+
+function formatRate(value, unit = 'tok/hr') {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return 'warming up';
+  return `${formatInt(number)} ${unit}`;
+}
+
+function formatTokenCount(value, unit = 'tok') {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return 'warming up';
+  return `${formatInt(number)} ${unit}`;
+}
+
+function formatDurationMinutes(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes < 0) return 'warming up';
+  if (minutes < 1) return '<1 min';
+  if (minutes < 60) return `${minutes.toFixed(minutes < 10 ? 1 : 0)} min`;
+  const hours = minutes / 60;
+  return `${hours.toFixed(hours < 10 ? 1 : 0)} hr`;
+}
+
+function normalizeRepoPath(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^\/+/, '');
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter(Boolean))).sort();
+}
+
+function estimateTokensFromText(text) {
+  const value = trimString(String(text || ''), 20000);
+  if (!value) return 0;
+  return Math.max(1, Math.ceil(value.length / 4));
+}
+
+function parseFilesTouchedField(value) {
+  if (typeof value !== 'string') return [];
+  return uniqueSorted(
+    value
+      .split(/[\n,]/)
+      .map((item) => normalizeRepoPath(item))
+      .filter((item) => item && item.toLowerCase() !== 'none'),
+  );
+}
+
+function isMetaOnlyPath(filePath) {
+  const file = normalizeRepoPath(filePath);
+  if (!file) return true;
+  if (file.startsWith('.fleetclaw/')) return true;
+  if (file.startsWith('.openclaw/')) return true;
+  if (file.startsWith('fleetclaw/')) return true;
+  return ['AGENTS.md', 'HEARTBEAT.md', 'IDENTITY.md', 'SOUL.md', 'TOOLS.md', 'USER.md'].includes(file);
+}
+
+function isAllowedAgentMetaPath(filePath, agentId) {
+  const file = normalizeRepoPath(filePath);
+  if (!file) return false;
+  if (file.startsWith(`.fleetclaw/agents/${agentId}/`)) return true;
+  if (file.startsWith('.fleetclaw/bin/')) return true;
+  return file === '.fleetclaw/runtime.env';
+}
+
+function isWorkProductPath(filePath) {
+  const file = normalizeRepoPath(filePath);
+  return Boolean(file) && !isMetaOnlyPath(file);
+}
+
+function matchesFocusPath(filePath, focusPath) {
+  const file = normalizeRepoPath(filePath);
+  const focus = normalizeRepoPath(focusPath);
+  if (!file || !focus) return false;
+  if (focus.endsWith('/')) {
+    const prefix = focus.replace(/\/+$/, '');
+    return file === prefix || file.startsWith(`${prefix}/`);
+  }
+  return file === focus;
+}
+
+function matchesAgentScope(filePath, agent) {
+  if (isAllowedAgentMetaPath(filePath, agent.id)) return true;
+  const focusDirs = Array.isArray(agent.focusDirs) ? agent.focusDirs : [];
+  return focusDirs.some((focusPath) => matchesFocusPath(filePath, focusPath));
+}
+
+function resolveWorkProductFiles(git) {
+  const rows = [
+    ...(Array.isArray(git?.modifiedFiles) ? git.modifiedFiles : []),
+    ...(Array.isArray(git?.untrackedFiles) ? git.untrackedFiles : []),
+  ];
+  return uniqueSorted(
+    rows
+      .map((entry) => normalizeRepoPath(entry?.file))
+      .filter((file) => isWorkProductPath(file)),
+  );
 }
 
 function execText(command, options = {}) {
@@ -563,6 +709,588 @@ function loadControlPlaneEntries(projectRoot, limit = CONTROL_PLANE_HISTORY_LIMI
   };
 }
 
+function loadControlPlaneHistory(projectRoot, limit = CONTROL_PLANE_ANALYTICS_LIMIT) {
+  const logFile = path.join(projectRoot, '.fleetclaw', 'logs', 'control-plane.jsonl');
+  return loadJsonlEntries(
+    logFile,
+    (parsed) => parsed && typeof parsed === 'object' && typeof parsed.eventId === 'string',
+    limit,
+  ).reverse();
+}
+
+function resolveDashboardSnapshotLogFile(projectRoot) {
+  return path.join(projectRoot, '.fleetclaw', 'logs', DASHBOARD_SNAPSHOT_FILE_NAME);
+}
+
+function loadDashboardSnapshots(projectRoot, limit = DASHBOARD_SNAPSHOT_HISTORY_LIMIT) {
+  const logFile = resolveDashboardSnapshotLogFile(projectRoot);
+  return {
+    logFile,
+    entries: loadJsonlEntries(
+      logFile,
+      (parsed) => parsed && typeof parsed === 'object' && typeof parsed.createdAt === 'string' && Number.isFinite(Number(parsed.totalTokens)),
+      limit,
+    ).reverse(),
+  };
+}
+
+function appendDashboardSnapshot(projectRoot, entry) {
+  const logFile = resolveDashboardSnapshotLogFile(projectRoot);
+  ensureParentDir(logFile);
+  fs.appendFileSync(logFile, `${JSON.stringify(entry)}\n`, 'utf8');
+}
+
+function maybeRecordDashboardSnapshot(projectRoot, entry, snapshots) {
+  const existing = Array.isArray(snapshots) ? snapshots.slice() : [];
+  const latest = existing[existing.length - 1] || null;
+  const latestMs = parseTimestamp(latest?.createdAt)?.getTime() || 0;
+  const currentMs = parseTimestamp(entry?.createdAt)?.getTime() || Date.now();
+
+  if (!latest || (currentMs - latestMs) >= DASHBOARD_SNAPSHOT_INTERVAL_MS) {
+    appendDashboardSnapshot(projectRoot, entry);
+    existing.push(entry);
+  }
+
+  return existing.slice(-DASHBOARD_SNAPSHOT_HISTORY_LIMIT);
+}
+
+function countGitCommitsSince(projectRoot, sinceDate) {
+  const sinceIso = sinceDate instanceof Date ? sinceDate.toISOString() : new Date(sinceDate).toISOString();
+  const raw = execFileText('git', ['log', `--since=${sinceIso}`, '--oneline'], { cwd: projectRoot });
+  if (!raw) return 0;
+  return raw.split('\n').filter(Boolean).length;
+}
+
+function buildNotificationMessage(entry) {
+  const lines = [
+    `AGENT_EVENT: ${entry.eventType || 'CHECKPOINT'}`,
+    `EVENT_ID: ${entry.eventId || '-'}`,
+    `AGENT_ID: ${entry.agentId || '-'}`,
+    `STATE: ${entry.state || '-'}`,
+    `REQUEST: ${entry.request || '-'}`,
+    `SUMMARY: ${entry.summary || 'n/a'}`,
+  ];
+  if (entry.blocker && String(entry.blocker).toLowerCase() !== 'none') {
+    lines.push(`BLOCKER: ${entry.blocker}`);
+  }
+  return lines.join('\n');
+}
+
+function buildDecisionMessage(entry) {
+  const lines = [
+    `SUPERVISOR_DECISION: ${entry.decision || '-'}`,
+    `EVENT_ID: ${entry.eventId || '-'}`,
+    `NEXT: ${entry.next || 'n/a'}`,
+  ];
+  if (entry.reason) {
+    lines.push(`REASON: ${entry.reason}`);
+  }
+  return lines.join('\n');
+}
+
+function dedupeControlPlaneEntries(entries, direction) {
+  const deduped = new Map();
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (direction && entry.direction !== direction) continue;
+
+    const createdMs = parseTimestamp(entry.createdAt)?.getTime() || 0;
+    const key = entry.direction === 'supervisor_to_agent'
+      ? [entry.direction, entry.agentId || '', entry.eventId || '', entry.decision || ''].join(':')
+      : [entry.direction, entry.agentId || '', entry.eventId || '', entry.eventType || entry.request || ''].join(':');
+
+    const existing = deduped.get(key);
+    if (!existing || createdMs < existing.createdMs) {
+      deduped.set(key, { createdMs, entry });
+    }
+  }
+
+  return Array.from(deduped.values())
+    .sort((left, right) => left.createdMs - right.createdMs)
+    .map((item) => item.entry);
+}
+
+function countDetectedCompactions(profile, runtimeIds, sinceDate) {
+  const sinceMs = sinceDate instanceof Date ? sinceDate.getTime() : 0;
+  const seen = new Set();
+
+  for (const runtimeId of uniqueSorted(runtimeIds)) {
+    const sessionDir = path.join(process.env.HOME, `.openclaw-${profile}`, 'agents', runtimeId, 'sessions');
+    if (!fs.existsSync(sessionDir)) continue;
+
+    let files = [];
+    try {
+      files = fs.readdirSync(sessionDir)
+        .filter((name) => name.endsWith('.jsonl'))
+        .sort()
+        .reverse()
+        .slice(0, 8);
+    } catch {
+      continue;
+    }
+
+    for (const fileName of files) {
+      let lines = [];
+      try {
+        lines = fs.readFileSync(path.join(sessionDir, fileName), 'utf8').split('\n');
+      } catch {
+        continue;
+      }
+
+      for (const rawLine of lines) {
+        if (!rawLine) continue;
+        let payload;
+        try {
+          payload = JSON.parse(rawLine);
+        } catch {
+          continue;
+        }
+
+        const stamp = parseTimestamp(payload?.timestamp || payload?.message?.timestamp);
+        if (!stamp || stamp.getTime() < sinceMs) continue;
+
+        const message = payload?.message;
+        if (!message || message.role !== 'user') continue;
+
+        const text = extractTextContent(message.content).trim();
+        if (!text.startsWith('/compact')) continue;
+
+        seen.add(`${runtimeId}:${payload.id || stamp.toISOString()}`);
+      }
+    }
+  }
+
+  return seen.size;
+}
+
+function buildMetricCard(card) {
+  return {
+    id: card.id,
+    label: card.label,
+    value: card.value,
+    secondary: card.secondary || '',
+    definition: card.definition || '',
+    formula: card.formula || '',
+    tone: card.tone || 'info',
+  };
+}
+
+function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git, controlPlaneEntries) {
+  const now = new Date();
+  const startOfDay = startOfLocalDay(now);
+  const liveRows = Array.isArray(live?.rows) ? live.rows : [];
+  const mainRows = liveRows.filter((row) => row.sessionKind === 'main');
+  const agentMainRows = mainRows.filter((row) => row.displayAgentId !== 'supervisor');
+  const supervisorMain = mainRows.find((row) => row.displayAgentId === 'supervisor') || null;
+  const runtimeIds = [
+    ...(supervisorMain ? [supervisorMain.runtimeId] : []),
+    ...agentMainRows.map((row) => row.runtimeId),
+  ];
+
+  const totalTokensCurrent = safeSum(liveRows.map((row) => row.totalTokens));
+  const mainTokensCurrent = safeSum(mainRows.map((row) => row.totalTokens));
+  const supervisorTokensCurrent = Number(supervisorMain?.totalTokens) || 0;
+  const supervisorTokensPct = mainTokensCurrent > 0 ? (supervisorTokensCurrent / mainTokensCurrent) * 100 : null;
+  const avgContextPct = safeAverage(mainRows.map((row) => row.usagePct));
+  const maxContextPct = liveRows.length ? Math.max(...liveRows.map((row) => Number(row.usagePct) || 0)) : 0;
+
+  const activeAgents = agents.filter((agent) => {
+    const state = String(agent.statusFields?.state || '').toLowerCase();
+    return state === 'working' || state.includes('review');
+  }).length;
+  const blockedAgents = agents.filter((agent) => {
+    const state = String(agent.statusFields?.state || '').toLowerCase();
+    const blocker = String(agent.statusFields?.blocker || '').toLowerCase();
+    return state === 'blocked' || (blocker && blocker !== 'none');
+  });
+  const pendingAgents = agents.filter((agent) => String(agent.statusFields?.['needs supervisor decision'] || '').toLowerCase() === 'yes');
+
+  const notifications = dedupeControlPlaneEntries(controlPlaneEntries, 'agent_to_supervisor');
+  const decisions = dedupeControlPlaneEntries(controlPlaneEntries, 'supervisor_to_agent');
+  const notificationsToday = notifications.filter((entry) => {
+    const stamp = parseTimestamp(entry.createdAt);
+    return stamp && stamp >= startOfDay;
+  });
+  const decisionsToday = decisions.filter((entry) => {
+    const stamp = parseTimestamp(entry.createdAt);
+    return stamp && stamp >= startOfDay;
+  });
+
+  const earliestDecisionByEvent = new Map();
+  for (const entry of decisions) {
+    const createdMs = parseTimestamp(entry.createdAt)?.getTime() || 0;
+    const existing = earliestDecisionByEvent.get(entry.eventId);
+    if (!existing || createdMs < existing.createdMs) {
+      earliestDecisionByEvent.set(entry.eventId, { createdMs, entry });
+    }
+  }
+
+  let pushTriggeredCount = 0;
+  let pollTriggeredCount = 0;
+  const latencyMinutes = [];
+  for (const entry of decisions) {
+    const decisionMs = parseTimestamp(entry.createdAt)?.getTime() || 0;
+    const notification = notifications.find((item) => item.eventId === entry.eventId && item.agentId === entry.agentId);
+    if (notification) {
+      const notifyMs = parseTimestamp(notification.createdAt)?.getTime() || 0;
+      if (decisionMs >= notifyMs) {
+        pushTriggeredCount += 1;
+      }
+    } else {
+      pollTriggeredCount += 1;
+    }
+  }
+
+  for (const entry of notifications) {
+    const decisionMatch = earliestDecisionByEvent.get(entry.eventId);
+    if (!decisionMatch) continue;
+    const notifyMs = parseTimestamp(entry.createdAt)?.getTime() || 0;
+    const decisionMs = decisionMatch.createdMs;
+    if (decisionMs >= notifyMs) {
+      latencyMinutes.push((decisionMs - notifyMs) / 60000);
+    }
+  }
+
+  const acceptedDecisionIdsToday = uniqueSorted(
+    decisionsToday
+      .filter((entry) => entry.decision === 'ACCEPT_DONE')
+      .map((entry) => `${entry.agentId}:${entry.eventId}`),
+  );
+  const acceptedTasksToday = acceptedDecisionIdsToday.length;
+
+  const avgNotificationTokens = safeAverage(notifications.map((entry) => estimateTokensFromText(buildNotificationMessage(entry))));
+  const avgDecisionTokens = safeAverage(decisions.map((entry) => estimateTokensFromText(buildDecisionMessage(entry))));
+  const pushTotal = pushTriggeredCount + pollTriggeredCount;
+  const pushPct = pushTotal > 0 ? (pushTriggeredCount / pushTotal) * 100 : null;
+  const medianReviewLatency = median(latencyMinutes);
+
+  const workProductFiles = resolveWorkProductFiles(git);
+  const commitsToday = countGitCommitsSince(projectRoot, startOfDay);
+
+  const diffAwaitingReviewFiles = uniqueSorted(
+    pendingAgents.flatMap((agent) => parseFilesTouchedField(agent.statusFields?.['files touched']))
+      .filter((file) => isWorkProductPath(file)),
+  );
+
+  const focusDirViolations = uniqueSorted(
+    agents.flatMap((agent) => parseFilesTouchedField(agent.statusFields?.['files touched'])
+      .filter((file) => isWorkProductPath(file) && !matchesAgentScope(file, agent))),
+  );
+
+  const compactionsToday = countDetectedCompactions(profile, runtimeIds, startOfDay);
+  const tokensPerAcceptedTask = acceptedTasksToday > 0 ? totalTokensCurrent / acceptedTasksToday : null;
+
+  const snapshotsState = loadDashboardSnapshots(projectRoot);
+  const currentSnapshot = {
+    createdAt: now.toISOString(),
+    totalTokens: Math.round(totalTokensCurrent),
+    mainTokens: Math.round(mainTokensCurrent),
+    supervisorTokens: Math.round(supervisorTokensCurrent),
+    avgContextPct: Number.isFinite(Number(avgContextPct)) ? Number(avgContextPct.toFixed(2)) : null,
+    activeAgents,
+    blockedAgents: blockedAgents.length,
+    acceptedTasksToday,
+    compactionsToday,
+    pushReviews: pushTriggeredCount,
+    pollReviews: pollTriggeredCount,
+  };
+  const snapshots = maybeRecordDashboardSnapshot(projectRoot, currentSnapshot, snapshotsState.entries);
+  const firstSnapshotToday = snapshots.find((entry) => {
+    const stamp = parseTimestamp(entry.createdAt);
+    return stamp && stamp >= startOfDay;
+  }) || null;
+  const sixHourCutoffMs = now.getTime() - (BURN_RATE_WINDOW_HOURS * 60 * 60 * 1000);
+  const burnWindow = snapshots.filter((entry) => {
+    const stamp = parseTimestamp(entry.createdAt);
+    return stamp && stamp.getTime() >= sixHourCutoffMs;
+  });
+  const burnStart = burnWindow[0] || null;
+  const burnEnd = burnWindow[burnWindow.length - 1] || null;
+  let burnRate = null;
+  if (burnStart && burnEnd && burnStart !== burnEnd) {
+    const elapsedHours = (parseTimestamp(burnEnd.createdAt).getTime() - parseTimestamp(burnStart.createdAt).getTime()) / 3600000;
+    if (elapsedHours >= 0.25) {
+      burnRate = (Number(burnEnd.totalTokens) - Number(burnStart.totalTokens)) / elapsedHours;
+    }
+  }
+  const tokensToday = firstSnapshotToday
+    ? Math.max(0, Math.round(totalTokensCurrent - Number(firstSnapshotToday.totalTokens || 0)))
+    : null;
+
+  const latestAcceptedDecision = decisions
+    .filter((entry) => entry.decision === 'ACCEPT_DONE')
+    .map((entry) => ({ entry, stamp: parseTimestamp(entry.createdAt) }))
+    .filter((item) => item.stamp)
+    .sort((left, right) => right.stamp.getTime() - left.stamp.getTime())[0] || null;
+
+  const alerts = [];
+  const highContextRows = mainRows.filter((row) => Number(row.usagePct) >= HIGH_CONTEXT_ALERT_PCT);
+  if (highContextRows.length) {
+    alerts.push({
+      level: 'danger',
+      title: 'High context',
+      detail: `${highContextRows.map((row) => `${row.displayAgentId} ${formatPct(row.usagePct)}`).join(' · ')} — forgetting risk is elevated.`,
+    });
+  }
+  if (Number.isFinite(Number(supervisorTokensPct)) && Number(supervisorTokensPct) >= HIGH_SUPERVISOR_SHARE_PCT) {
+    alerts.push({
+      level: 'warning',
+      title: 'High coordination overhead',
+      detail: `Supervisor owns ${formatPct(supervisorTokensPct)} of main-session tokens — orchestration may be too heavy.`,
+    });
+  }
+  if (pushTotal >= 4 && Number.isFinite(Number(pushPct)) && Number(pushPct) < PUSH_DEGRADED_PCT) {
+    alerts.push({
+      level: 'warning',
+      title: 'Push degraded',
+      detail: `${formatPct(pushPct)} of recent decisions were push-triggered; polling fallback is dominating.`,
+    });
+  }
+  if (activeAgents > 0) {
+    const staleAccept = latestAcceptedDecision
+      ? ((now.getTime() - latestAcceptedDecision.stamp.getTime()) / 60000) >= STALE_ACCEPT_MINUTES
+      : true;
+    if (staleAccept) {
+      alerts.push({
+        level: 'warning',
+        title: 'Stale work landing',
+        detail: latestAcceptedDecision
+          ? `No accepted task for ${formatDurationMinutes((now.getTime() - latestAcceptedDecision.stamp.getTime()) / 60000)}.`
+          : 'No accepted task has landed yet in the sampled history.',
+      });
+    }
+  }
+
+  const blockedTooLong = blockedAgents
+    .map((agent) => {
+      const stamp = parseTimestamp(agent.statusFields?.['last updated']);
+      if (!stamp) return null;
+      const ageMinutes = (now.getTime() - stamp.getTime()) / 60000;
+      return ageMinutes >= BLOCKED_LANE_ALERT_MINUTES ? { agent, ageMinutes } : null;
+    })
+    .filter(Boolean);
+  if (blockedTooLong.length) {
+    alerts.push({
+      level: 'danger',
+      title: 'Blocked lane',
+      detail: blockedTooLong.map((item) => `${item.agent.id} ${formatDurationMinutes(item.ageMinutes)}`).join(' · '),
+    });
+  }
+  if (!alerts.length) {
+    alerts.push({
+      level: 'ok',
+      title: 'Stable',
+      detail: 'No high-context, stale-output, push-degraded, or blocked-lane thresholds are currently tripped.',
+    });
+  }
+
+  return {
+    alerts,
+    overview: {
+      activeAgents,
+      blockedAgents: blockedAgents.length,
+      pendingReviews: pendingAgents.length,
+      acceptedTasksToday,
+      avgContextPct,
+      maxContextPct,
+      totalTokensCurrent,
+      totalTokensToday: tokensToday,
+      burnRate,
+      supervisorTokensPct,
+      pushTriggeredCount,
+      pollTriggeredCount,
+      workProductFiles: workProductFiles.length,
+      diffAwaitingReviewFiles: diffAwaitingReviewFiles.length,
+    },
+    snapshot: {
+      logFile: snapshotsState.logFile,
+      sampleCount: snapshots.length,
+      totalTokensCurrent: Math.round(totalTokensCurrent),
+      totalTokensToday: tokensToday,
+      burnRate,
+    },
+    sections: [
+      {
+        id: 'health',
+        title: 'Project health',
+        subtitle: 'Cost, load, and forgetting risk at the whole-fleet level.',
+        metrics: [
+          buildMetricCard({
+            id: 'total-tokens',
+            label: 'Total tokens',
+            value: formatInt(totalTokensCurrent),
+            secondary: Number.isFinite(Number(tokensToday))
+              ? `Today +${formatInt(tokensToday)} · ${liveRows.length} live sessions`
+              : `Current live footprint · ${liveRows.length} live sessions`,
+            definition: 'Approximate token footprint across live sessions that currently report totals. The today delta uses dashboard snapshots, so it is sampled rather than billing-exact.',
+            formula: 'sum(totalTokens across live sessions) and current total minus first dashboard snapshot of the day',
+            tone: 'info',
+          }),
+          buildMetricCard({
+            id: 'burn-rate',
+            label: 'Burn rate',
+            value: formatRate(burnRate),
+            secondary: `Rolling ${BURN_RATE_WINDOW_HOURS}h window · ${snapshots.length} samples`,
+            definition: 'How fast live session tokens are growing. Useful for spotting runaway orchestration or idle-but-chatty agents.',
+            formula: '(latest sampled total tokens - earliest sampled total tokens in the rolling window) / elapsed hours',
+            tone: Number.isFinite(Number(burnRate)) && burnRate > 12000 ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'active-agents',
+            label: 'Active lanes',
+            value: formatInt(activeAgents),
+            secondary: `${formatInt(pendingAgents.length)} waiting for review · ${formatInt(blockedAgents.length)} blocked`,
+            definition: 'Coding lanes currently moving work or waiting in a review state. Done lanes are excluded.',
+            formula: 'count(STATUS state in {working, ready-for-review})',
+            tone: activeAgents > 0 ? 'good' : 'info',
+          }),
+          buildMetricCard({
+            id: 'blocked-agents',
+            label: 'Blocked lanes',
+            value: formatInt(blockedAgents.length),
+            secondary: blockedAgents.length ? blockedAgents.map((agent) => agent.id).join(', ') : 'No open blockers',
+            definition: 'Lanes that explicitly report a blocked state or a non-empty blocker field.',
+            formula: 'count(agent where state = blocked or blocker != none)',
+            tone: blockedAgents.length ? 'danger' : 'good',
+          }),
+          buildMetricCard({
+            id: 'accepted-tasks',
+            label: 'Accepted tasks',
+            value: formatInt(acceptedTasksToday),
+            secondary: 'Today only',
+            definition: 'Unique supervisor acceptances that landed today. This is the clearest sign that work is actually being approved and closed.',
+            formula: 'count(distinct ACCEPT_DONE decisions recorded today)',
+            tone: acceptedTasksToday > 0 ? 'good' : 'warning',
+          }),
+          buildMetricCard({
+            id: 'avg-context',
+            label: 'Avg context %',
+            value: formatPct(avgContextPct),
+            secondary: `Max ${formatPct(maxContextPct)} across live sessions`,
+            definition: 'Mean current context occupancy across main sessions with reported token totals. Higher values increase forgetting and compaction risk.',
+            formula: 'average(totalTokens / contextTokens for main sessions)',
+            tone: Number.isFinite(Number(avgContextPct)) && avgContextPct >= 70 ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'compactions',
+            label: 'Compactions',
+            value: formatInt(compactionsToday),
+            secondary: 'Detected /compact commands today',
+            definition: 'Observed compaction commands in local session history for the current day. This is a practical forgetting-pressure signal, not a perfect internal counter.',
+            formula: 'count(user messages starting with /compact in today’s session history)',
+            tone: compactionsToday > 0 ? 'warning' : 'good',
+          }),
+        ],
+      },
+      {
+        id: 'coordination',
+        title: 'Coordination efficiency',
+        subtitle: 'Whether FleetClaw is staying lean or letting orchestration take over.',
+        metrics: [
+          buildMetricCard({
+            id: 'supervisor-tokens-pct',
+            label: 'Supervisor tokens %',
+            value: formatPct(supervisorTokensPct),
+            secondary: `${formatInt(supervisorTokensCurrent)} of ${formatInt(mainTokensCurrent)} main-session tokens`,
+            definition: 'Share of main-session tokens currently sitting in the supervisor rather than in the worker lanes.',
+            formula: 'supervisor main-session tokens / total main-session tokens',
+            tone: Number.isFinite(Number(supervisorTokensPct)) && supervisorTokensPct >= HIGH_SUPERVISOR_SHARE_PCT ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'push-vs-poll',
+            label: 'Push vs poll reviews',
+            value: Number.isFinite(Number(pushPct)) ? `${formatPct(pushPct)} push` : 'warming up',
+            secondary: pushTotal > 0 ? `${formatInt(pushTriggeredCount)} push · ${formatInt(pollTriggeredCount)} poll/manual` : 'No sampled decisions yet',
+            definition: 'How many review decisions were triggered by an agent checkpoint versus supervisor polling or manual intervention.',
+            formula: 'share of supervisor decisions that match a prior agent notification for the same EVENT_ID',
+            tone: Number.isFinite(Number(pushPct)) && pushPct < PUSH_DEGRADED_PCT ? 'warning' : 'good',
+          }),
+          buildMetricCard({
+            id: 'avg-notification-size',
+            label: 'Avg notification size',
+            value: formatTokenCount(avgNotificationTokens),
+            secondary: `${formatInt(notifications.length)} sampled agent notifications`,
+            definition: 'Mean estimated size of agent -> supervisor control messages. Drift upward means the compact delta protocol is being ignored.',
+            formula: 'average(estimated tokens of serialized AGENT_EVENT messages)',
+            tone: Number.isFinite(Number(avgNotificationTokens)) && avgNotificationTokens > (scope?.protocol?.agent_to_supervisor_max_tokens || 80) ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'avg-decision-size',
+            label: 'Avg decision size',
+            value: formatTokenCount(avgDecisionTokens),
+            secondary: `${formatInt(decisions.length)} sampled supervisor decisions`,
+            definition: 'Mean estimated size of supervisor -> agent decisions. Drift upward means the supervisor is re-expanding into rich chat.',
+            formula: 'average(estimated tokens of serialized SUPERVISOR_DECISION messages)',
+            tone: Number.isFinite(Number(avgDecisionTokens)) && avgDecisionTokens > (scope?.protocol?.supervisor_to_agent_max_tokens || 120) ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'review-latency',
+            label: 'Review latency',
+            value: formatDurationMinutes(medianReviewLatency),
+            secondary: `${formatInt(latencyMinutes.length)} matched checkpoints`,
+            definition: 'Median wait time from an agent checkpoint notification to the first supervisor decision for the same event.',
+            formula: 'median(supervisor decision time - matching agent notification time)',
+            tone: Number.isFinite(Number(medianReviewLatency)) && medianReviewLatency > 10 ? 'warning' : 'good',
+          }),
+        ],
+      },
+      {
+        id: 'output',
+        title: 'Output and repo progress',
+        subtitle: 'Whether the token spend is becoming visible repo movement.',
+        metrics: [
+          buildMetricCard({
+            id: 'commits-today',
+            label: 'Commits',
+            value: formatInt(commitsToday),
+            secondary: 'Today only',
+            definition: 'Commits created in the project repo since the start of the current day.',
+            formula: 'count(git commits since local day start)',
+            tone: commitsToday > 0 ? 'good' : 'info',
+          }),
+          buildMetricCard({
+            id: 'files-changed',
+            label: 'Files changed',
+            value: formatInt(workProductFiles.length),
+            secondary: 'Work-product files only',
+            definition: 'Current modified or untracked repo files, excluding FleetClaw framework state, OpenClaw runtime state, and generated scaffolding.',
+            formula: 'count(unique modified/untracked files outside meta paths)',
+            tone: workProductFiles.length > 0 ? 'info' : 'good',
+          }),
+          buildMetricCard({
+            id: 'diff-awaiting-review',
+            label: 'Diff awaiting review',
+            value: formatInt(diffAwaitingReviewFiles.length),
+            secondary: `${formatInt(pendingAgents.length)} lanes requesting a decision`,
+            definition: 'Files explicitly named by lanes that are currently waiting on supervisor review or acceptance.',
+            formula: 'count(unique files touched by agents with Needs supervisor decision = yes)',
+            tone: diffAwaitingReviewFiles.length > 0 ? 'warning' : 'good',
+          }),
+          buildMetricCard({
+            id: 'focus-violations',
+            label: 'Focus-dir violations',
+            value: formatInt(focusDirViolations.length),
+            secondary: focusDirViolations.length ? focusDirViolations.join(', ') : 'No out-of-scope files reported',
+            definition: 'Touched work-product files that fall outside the owning agent’s declared focus paths.',
+            formula: 'count(files touched by an agent that do not match that agent’s focus_dirs)',
+            tone: focusDirViolations.length ? 'danger' : 'good',
+          }),
+          buildMetricCard({
+            id: 'tokens-per-accepted-task',
+            label: 'Tokens / accepted task',
+            value: formatTokenCount(tokensPerAcceptedTask, 'tok/task'),
+            secondary: acceptedTasksToday > 0 ? `${formatInt(acceptedTasksToday)} accepted today` : 'Needs at least one accepted task today',
+            definition: 'A simple efficiency proxy: how many currently reported live-session tokens you are carrying for each task that actually got accepted today.',
+            formula: 'current total tokens / accepted tasks today',
+            tone: Number.isFinite(Number(tokensPerAcceptedTask)) && tokensPerAcceptedTask > 50000 ? 'warning' : 'info',
+          }),
+        ],
+      },
+    ],
+  };
+}
+
 function buildHumanFeedbackMessage(entry) {
   const header = `[${formatDashboardTimestamp(parseTimestamp(entry.createdAt)) || entry.createdAt}] HUMAN_FEEDBACK`;
   const lines = [
@@ -860,6 +1588,8 @@ function buildDashboardPayload() {
   const feedbackTargets = resolveFeedbackTargets(scope);
   const feedbackEntries = loadFeedbackEntries();
   const controlPlane = loadControlPlaneEntries(projectRoot);
+  const controlPlaneHistory = loadControlPlaneHistory(projectRoot);
+  const analytics = buildOperationalMetrics(scope, projectRoot, profile, agents, live, git, controlPlaneHistory);
 
   return {
     project: {
@@ -913,6 +1643,7 @@ function buildDashboardPayload() {
     metrics: {
       markdown,
       live,
+      analytics,
     },
     feedback: {
       entries: feedbackEntries,

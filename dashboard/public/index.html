@@ -278,6 +278,144 @@
     letter-spacing: 0.08em;
   }
 
+  .stat-note {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .alert-strip,
+  .metrics-sections {
+    display: grid;
+    gap: 16px;
+  }
+
+  .alert-grid,
+  .metric-grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .alert-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .alert-card,
+  .metric-card {
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(145, 160, 179, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    display: grid;
+    gap: 10px;
+  }
+
+  .alert-card {
+    align-content: start;
+  }
+
+  .alert-card__title,
+  .metric-card__label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .alert-card__detail,
+  .metric-card__secondary {
+    color: #d9e4ef;
+    font-size: 13px;
+  }
+
+  .alert-card__detail {
+    line-height: 1.45;
+  }
+
+  .alert-card--ok,
+  .metric-card--good {
+    border-color: rgba(70, 212, 131, 0.22);
+    background: linear-gradient(180deg, rgba(70, 212, 131, 0.08), rgba(255, 255, 255, 0.02));
+  }
+
+  .alert-card--warning,
+  .metric-card--warning {
+    border-color: rgba(240, 196, 90, 0.26);
+    background: linear-gradient(180deg, rgba(240, 196, 90, 0.08), rgba(255, 255, 255, 0.02));
+  }
+
+  .alert-card--danger,
+  .metric-card--danger {
+    border-color: rgba(255, 120, 112, 0.28);
+    background: linear-gradient(180deg, rgba(255, 120, 112, 0.08), rgba(255, 255, 255, 0.02));
+  }
+
+  .metric-card--info {
+    border-color: rgba(114, 208, 255, 0.2);
+  }
+
+  .metric-section {
+    display: grid;
+    gap: 14px;
+  }
+
+  .metric-section__header {
+    display: grid;
+    gap: 6px;
+  }
+
+  .metric-section__header h3 {
+    font-size: 18px;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  }
+
+  .metric-card__top {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .metric-card__value {
+    font-size: clamp(1.35rem, 2.6vw, 2rem);
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+
+  .metric-card__tone {
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    border: 1px solid rgba(145, 160, 179, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .metric-card__body {
+    display: grid;
+    gap: 8px;
+  }
+
+  .metric-card__definition,
+  .metric-card__formula {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .metric-card__definition strong,
+  .metric-card__formula strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
   .lane-grid {
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
@@ -754,6 +892,12 @@ function fmtInt(value) {
   return number.toLocaleString();
 }
 
+function formatRate(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return 'warming up';
+  return `${fmtInt(Math.round(number))} tok/hr`;
+}
+
 function fmtTime(value) {
   if (!value) return '-';
   const parsed = new Date(value);
@@ -1090,6 +1234,93 @@ function renderLaneCard(role) {
   `;
 }
 
+function metricToneClass(tone) {
+  const value = String(tone || 'info').toLowerCase();
+  if (value === 'good') return 'metric-card--good';
+  if (value === 'warning') return 'metric-card--warning';
+  if (value === 'danger') return 'metric-card--danger';
+  return 'metric-card--info';
+}
+
+function alertLevelClass(level) {
+  const value = String(level || 'ok').toLowerCase();
+  if (value === 'danger') return 'alert-card--danger';
+  if (value === 'warning') return 'alert-card--warning';
+  return 'alert-card--ok';
+}
+
+function renderQuickStat(label, value, note) {
+  return `
+    <div class="stat">
+      <div class="stat-value">${esc(value || '-')}</div>
+      <div class="stat-label">${esc(label)}</div>
+      ${note ? `<div class="stat-note">${esc(note)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderAlertStrip(analytics) {
+  const alerts = analytics?.alerts || [];
+  if (!alerts.length) return '';
+
+  return `
+    <section class="card">
+      <div class="card-header"><h2>Alert Strip</h2></div>
+      <div class="card-body">
+        <div class="alert-grid">
+          ${alerts.map((alert) => `
+            <article class="alert-card ${alertLevelClass(alert.level)}">
+              <div class="alert-card__title">${esc(alert.title || 'Alert')}</div>
+              <div class="alert-card__detail">${esc(alert.detail || '')}</div>
+            </article>
+          `).join('')}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderMetricSections(analytics) {
+  const sections = analytics?.sections || [];
+  if (!sections.length) return '';
+
+  return `
+    <section class="metrics-sections">
+      ${sections.map((section) => `
+        <article class="card metric-section">
+          <div class="card-header">
+            <div class="metric-section__header">
+              <div class="eyebrow">Operational indicators</div>
+              <h3>${esc(section.title || 'Metrics')}</h3>
+              <div class="subtle">${esc(section.subtitle || '')}</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="metric-grid">
+              ${(section.metrics || []).map((metric) => `
+                <article class="metric-card ${metricToneClass(metric.tone)}">
+                  <div class="metric-card__top">
+                    <div>
+                      <div class="metric-card__label">${esc(metric.label || 'Metric')}</div>
+                      <div class="metric-card__value">${esc(metric.value || '-')}</div>
+                    </div>
+                    <span class="metric-card__tone">${esc(metric.tone || 'info')}</span>
+                  </div>
+                  <div class="metric-card__body">
+                    ${metric.secondary ? `<div class="metric-card__secondary">${esc(metric.secondary)}</div>` : ''}
+                    ${metric.definition ? `<div class="metric-card__definition"><strong>Definition</strong> ${esc(metric.definition)}</div>` : ''}
+                    ${metric.formula ? `<div class="metric-card__formula"><strong>Formula</strong> ${esc(metric.formula)}</div>` : ''}
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          </div>
+        </article>
+      `).join('')}
+    </section>
+  `;
+}
+
 function renderAgentSection(agent) {
   const state = agent.statusFields.state || 'unknown';
   const tabs = [
@@ -1330,12 +1561,9 @@ function renderSupport(projectData, metrics, controlPlane) {
 }
 
 function renderSummary(projectData, agents, supervisor, metrics, feedback) {
-  const doneCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase() === 'done').length;
-  const workingCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase() === 'working').length;
-  const reviewCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase().includes('review')).length;
-  const blockedCount = agents.filter((agent) => (agent.statusFields.state || '').toLowerCase() === 'blocked').length;
-  const pendingDecisionCount = agents.filter((agent) => (agent.statusFields['needs supervisor decision'] || '').toLowerCase() === 'yes').length;
-  const changedFiles = projectData.git.modifiedFiles || projectData.git.changedFiles || [];
+  const analytics = metrics.analytics || {};
+  const overview = analytics.overview || {};
+  const sampleCount = analytics.snapshot?.sampleCount || 0;
 
   const openclawLinks = [
     projectData.gateway.openclawUrl ? `<a class="link-pill" href="${esc(projectData.gateway.openclawUrl)}" target="_blank">Open OpenClaw UI</a>` : '',
@@ -1385,22 +1613,24 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
         </div>
       </section>
       <section class="card summary-card">
-        <div class="card-header"><h2>Fleet summary</h2></div>
+        <div class="card-header"><h2>Quick Read</h2></div>
         <div class="card-body">
           <div class="stat-grid">
-            <div class="stat"><div class="stat-value">${doneCount}</div><div class="stat-label">Done agents</div></div>
-            <div class="stat"><div class="stat-value">${workingCount}</div><div class="stat-label">Working agents</div></div>
-            <div class="stat"><div class="stat-value">${reviewCount}</div><div class="stat-label">Ready for review</div></div>
-            <div class="stat"><div class="stat-value">${blockedCount}</div><div class="stat-label">Blocked agents</div></div>
-            <div class="stat"><div class="stat-value">${pendingDecisionCount}</div><div class="stat-label">Pending supervisor decisions</div></div>
-            <div class="stat"><div class="stat-value">${fmtPct(metrics.live?.maxUsagePct || 0)}</div><div class="stat-label">Max live context</div></div>
-            <div class="stat"><div class="stat-value">${fmtPct(metrics.markdown?.maxUsagePct || 0)}</div><div class="stat-label">Max instruction load</div></div>
-            <div class="stat"><div class="stat-value">${changedFiles.length}</div><div class="stat-label">Tracked modifications</div></div>
+            ${renderQuickStat('Active lanes', fmtInt(overview.activeAgents), `${fmtInt(overview.blockedAgents)} blocked`)}
+            ${renderQuickStat('Accepted today', fmtInt(overview.acceptedTasksToday), 'Unique ACCEPT_DONE decisions')}
+            ${renderQuickStat('Pending review', fmtInt(overview.pendingReviews), `${fmtInt(overview.diffAwaitingReviewFiles)} files awaiting review`)}
+            ${renderQuickStat('Avg context', fmtPct(overview.avgContextPct), `Max ${fmtPct(overview.maxContextPct)}`)}
+            ${renderQuickStat('Burn rate', formatRate(overview.burnRate), `Sampled from ${fmtInt(sampleCount)} dashboard snapshots`)}
+            ${renderQuickStat('Supervisor share', fmtPct(overview.supervisorTokensPct), 'Main-session token share')}
+            ${renderQuickStat('Tokens live', fmtInt(overview.totalTokensCurrent), Number.isFinite(Number(overview.totalTokensToday)) ? `Today +${fmtInt(overview.totalTokensToday)}` : 'Today delta warming up')}
+            ${renderQuickStat('Work files', fmtInt(overview.workProductFiles), 'Modified or untracked work-product files')}
           </div>
-          <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)}</div>
+          <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)} · Token metrics are sampled from live session totals rather than billing logs.</div>
         </div>
       </section>
     </div>
+    ${renderAlertStrip(analytics)}
+    ${renderMetricSections(analytics)}
     ${renderFeedbackForm(projectData, feedback)}
     <section class="card">
       <div class="card-header"><h2>Role snapshot</h2></div>
