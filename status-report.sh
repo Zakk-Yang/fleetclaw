@@ -33,6 +33,7 @@ WORKTREE_BASE="$(resolve_worktree_base_from_scope "$SCOPE_FILE" "$PROJECT_NAME")
 SUPERVISOR_WS="${WORKTREE_BASE}/supervisor-workspace"
 PROJECT_ROOT="$(resolve_project_root_path "${PROJECT_REPO}" "${SCRIPT_DIR}")"
 AGENTS_DIR="${PROJECT_ROOT}/.fleetclaw/agents"
+CONTROL_PLANE_LOG="${PROJECT_ROOT}/.fleetclaw/logs/control-plane.jsonl"
 
 read_status_field() {
     local field_name="$1"
@@ -130,6 +131,39 @@ if [[ -f "$TODAY_LOG" ]]; then
     tail -20 "$TODAY_LOG" | sed 's/^/    /'
 else
     echo "  No notes for today yet."
+fi
+
+echo ""
+echo "--- Control Plane ---"
+if [[ -f "${CONTROL_PLANE_LOG}" ]]; then
+    python3 - "${CONTROL_PLANE_LOG}" <<'PY'
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+rows = []
+for raw_line in path.read_text(encoding="utf-8").splitlines():
+    if not raw_line:
+        continue
+    try:
+        rows.append(json.loads(raw_line))
+    except json.JSONDecodeError:
+        continue
+
+for entry in rows[-10:]:
+    created_at = entry.get("createdAt", "?")
+    direction = entry.get("direction", "?")
+    event_id = entry.get("eventId", "?")
+    agent_id = entry.get("agentId", "?")
+    status = entry.get("status", "?")
+    detail = entry.get("decision") or entry.get("request") or entry.get("eventType") or "-"
+    print(f"  {created_at}  {direction}  agent={agent_id}  event={event_id}  detail={detail}  status={status}")
+PY
+else
+    echo "  No control-plane events logged yet."
 fi
 
 # --- Context usage ---

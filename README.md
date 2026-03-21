@@ -78,8 +78,8 @@ Relative `*_file` paths resolve from the `fleetclaw/` directory.
 
 ```bash
 ./setup.sh    # Creates agent configs, OpenClaw profile, cron jobs
-./launch.sh   # Starts gateway, dashboard, heartbeat, agent sessions, and opens the dashboard tab
-./teardown.sh # Stops dashboard/reconciler, disables heartbeat, removes cron jobs
+./launch.sh   # Starts gateway, dashboard, cron-driven supervision, and agent sessions
+./teardown.sh # Stops dashboard/reconciler and removes cron jobs
 ```
 
 For a full runtime-state wipe without deleting your project files:
@@ -93,6 +93,7 @@ For a full runtime-state wipe without deleting your project files:
 - **OpenClaw UI**: http://localhost:{port}/ (port shown after launch)
 - **FleetClaw Dashboard**: starts automatically during `launch.sh` and opens in your browser at the resolved project dashboard URL
 - The dashboard now shows both estimated Markdown read-set percentages and live session context usage percentages
+- The dashboard also shows compact control-plane traffic so you can inspect recent agent notifications and supervisor decisions
 - The dashboard also includes a human feedback form that routes review notes into the supervisor loop by default and keeps a recent submission trail
 - FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
 
@@ -101,6 +102,7 @@ For a full runtime-state wipe without deleting your project files:
 FleetClaw now treats `project-scope.yaml` as the configuration source of truth.
 
 - Keep project settings, models, cadence, and lane ownership in `project-scope.yaml`
+- Keep notification and message-budget policy in the `protocol:` section of `project-scope.yaml`
 - Declare the primary review surface with `project.review_url` / `project.review_command` when the accepted state depends on a specific runtime path
 - Reference long-form prose with `project.description_file`, `supervisor.objective_file`, `supervisor.handoff_rules_file`, and `agents[].task_file`
 - Override the built-in document templates with `advanced.template_dir` only if you need custom generated `SOUL.md` / `BRIEF.md` shapes
@@ -121,6 +123,7 @@ your-project/
     launch.sh             # Start the fleet
     dashboard/            # Local monitoring UI
   .fleetclaw/             # Generated at setup (gitignored)
+    bin/                  # Compact notification helpers
     agents/
       <agent-id>/         # Per-agent config files
         SOUL.md           # Agent personality & workflow
@@ -136,11 +139,13 @@ your-project/
 
 - **STATUS.md** is the checkpoint contract between agent and supervisor
 - Agents update STATUS.md after each logical unit of work
+- Agents notify the supervisor with compact `EVENT_ID`-backed messages via `.fleetclaw/bin/notify-supervisor.sh`
 - Supervisor reads STATUS.md + git diff to make decisions
+- Supervisor replies with compact decisions via `.fleetclaw/bin/send-supervisor-decision.sh`
 - Decisions: `CONTINUE`, `REDIRECT`, `STOP`, `ACCEPT_DONE`, `ESCALATE`
+- Polling remains the fallback while notification delivery is being proven
 - If the agent misses an `ACCEPT_DONE` update, FleetClaw reconciles the checkpoint from recorded session history instead of waiting forever
-- Heartbeat (2 min) keeps agents alive via the gateway — no timeout deaths
-- Supervisor cron (configurable) runs periodic review cycles
+- There is no default coding-agent heartbeat; supervisor cron (configurable) is the periodic review loop
 
 ## Scripts
 
@@ -150,11 +155,12 @@ your-project/
 | `check-context.sh` | Show live session token usage and context pressure from OpenClaw |
 | `reconcile-status.sh` | Reconcile stale agent checkpoints from recorded supervisor decisions |
 | `reconcile-loop.sh` | Background loop that runs `reconcile-status.sh` automatically after launch |
+| `review-runtime-settings.sh` | Inspect heartbeat, compaction, retention, and cron settings for the dedicated profile |
 | `setup.sh` | Parse scope, create agent dirs, generate OpenClaw config, cron jobs |
-| `launch.sh` | Start gateway, dashboard, install crons, enable heartbeat, seed sessions |
+| `launch.sh` | Start gateway, dashboard, install crons, and seed sessions |
 | `status-report.sh` | Print agent checkpoints, supervisor notes, markdown budget, and live context usage |
 | `sync.sh` | Summarize shared-repo state; no merge step is needed in direct-workspace mode |
-| `teardown.sh` | Stop dashboard, disable heartbeat, remove crons, and clean generated files |
+| `teardown.sh` | Stop dashboard, remove crons, and clean generated files |
 
 ## Prerequisites
 

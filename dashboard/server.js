@@ -13,6 +13,7 @@ const CACHE_TTL_MS = 3000;
 const GENERATED_DIR = path.join(SCRIPT_DIR, 'generated');
 const FEEDBACK_LOG_FILE = path.join(GENERATED_DIR, 'human-feedback.jsonl');
 const FEEDBACK_HISTORY_LIMIT = 12;
+const CONTROL_PLANE_HISTORY_LIMIT = 20;
 
 let cachedPayload = null;
 let cachedAt = 0;
@@ -519,16 +520,15 @@ function appendFeedbackEntry(entry) {
   fs.appendFileSync(FEEDBACK_LOG_FILE, `${JSON.stringify(entry)}\n`, 'utf8');
 }
 
-function loadFeedbackEntries(limit = FEEDBACK_HISTORY_LIMIT) {
-  if (!fs.existsSync(FEEDBACK_LOG_FILE)) return [];
-
+function loadJsonlEntries(filePath, validator, limit) {
+  if (!fs.existsSync(filePath)) return [];
   const rows = [];
-  const lines = fs.readFileSync(FEEDBACK_LOG_FILE, 'utf8').split('\n');
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
   for (const rawLine of lines) {
     if (!rawLine) continue;
     try {
       const parsed = JSON.parse(rawLine);
-      if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string') {
+      if (validator(parsed)) {
         rows.push(parsed);
       }
     } catch {}
@@ -541,6 +541,26 @@ function loadFeedbackEntries(limit = FEEDBACK_HISTORY_LIMIT) {
   });
 
   return rows.slice(0, limit);
+}
+
+function loadFeedbackEntries(limit = FEEDBACK_HISTORY_LIMIT) {
+  return loadJsonlEntries(
+    FEEDBACK_LOG_FILE,
+    (parsed) => parsed && typeof parsed === 'object' && typeof parsed.id === 'string',
+    limit,
+  );
+}
+
+function loadControlPlaneEntries(projectRoot, limit = CONTROL_PLANE_HISTORY_LIMIT) {
+  const logFile = path.join(projectRoot, '.fleetclaw', 'logs', 'control-plane.jsonl');
+  return {
+    logFile,
+    entries: loadJsonlEntries(
+      logFile,
+      (parsed) => parsed && typeof parsed === 'object' && typeof parsed.eventId === 'string',
+      limit,
+    ),
+  };
 }
 
 function buildHumanFeedbackMessage(entry) {
@@ -839,6 +859,7 @@ function buildDashboardPayload() {
     .slice(0, 5);
   const feedbackTargets = resolveFeedbackTargets(scope);
   const feedbackEntries = loadFeedbackEntries();
+  const controlPlane = loadControlPlaneEntries(projectRoot);
 
   return {
     project: {
@@ -868,6 +889,11 @@ function buildDashboardPayload() {
         thinking: scope.supervisor?.thinking || '',
         statusReconcileIntervalSecs: scope.supervisor?.status_reconcile_interval_secs || 30,
       },
+      protocol: {
+        pollingFallback: scope?.protocol?.polling_fallback ?? true,
+        agentToSupervisorMaxTokens: scope?.protocol?.agent_to_supervisor_max_tokens || 80,
+        supervisorToAgentMaxTokens: scope?.protocol?.supervisor_to_agent_max_tokens || 120,
+      },
       git,
     },
     agents,
@@ -892,6 +918,7 @@ function buildDashboardPayload() {
       entries: feedbackEntries,
       targets: feedbackTargets,
     },
+    controlPlane,
   };
 }
 

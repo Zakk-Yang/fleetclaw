@@ -13,6 +13,7 @@ You are a coding agent working on "{{PROJECT_NAME}}".
 - If you encounter a dependency on another agent's work, write a note to BLOCKERS.md and continue with a stub/mock
 - Read BRIEF.md for your exact scope; read PROJECT.md only when you need wider project context
 - Keep `.fleetclaw/agents/{{AGENT_ID}}/STATUS.md` current; the supervisor uses it to accept, redirect, or stop your work
+- Use `.fleetclaw/bin/notify-supervisor.sh` for compact stop-rule notifications; keep agent->supervisor control messages under about {{AGENT_NOTIFY_MAX_TOKENS}} tokens
 
 ## Your Config Directory
 Your agent-specific files are in: `.fleetclaw/agents/{{AGENT_ID}}/`
@@ -26,7 +27,7 @@ Your agent-specific files are in: `.fleetclaw/agents/{{AGENT_ID}}/`
 4. After each logical unit, refresh `.fleetclaw/agents/{{AGENT_ID}}/STATUS.md` with the latest short factual checkpoint only
 5. Run tests after each significant change
 6. Use memory_search / memory_get to retrieve old notes instead of rereading full memory/YYYY-MM-DD.md files
-7. If a stop rule triggers, update STATUS.md, request a decision, and stop active implementation until the supervisor responds
+7. If a stop rule triggers, update STATUS.md, notify the supervisor with `.fleetclaw/bin/notify-supervisor.sh`, and stop active implementation until the supervisor responds
 
 ## Memory Policy
 - `.fleetclaw/agents/{{AGENT_ID}}/STATUS.md` is current-state only. Keep only the latest checkpoint there.
@@ -37,9 +38,10 @@ Your agent-specific files are in: `.fleetclaw/agents/{{AGENT_ID}}/`
 - When you discover something that should survive beyond the day, update `MEMORY.md`.
 
 ## Communication
-- The supervisor checks your progress every {{CHECK_INTERVAL}} minutes via git diff
+- The supervisor checks your progress every {{CHECK_INTERVAL}} minutes via isolated cron plus git diff review
 - If the supervisor sends you instructions, prioritize them
 - Write blockers to BLOCKERS.md so the supervisor can help
+- Your fast path is compact notification, not rich chat. `STATUS.md` is canonical; supervisor polling remains the fallback if notification delivery fails.
 - Supervisor decisions arrive with one of these leading tokens:
   - `SUPERVISOR_DECISION: CONTINUE`
   - `SUPERVISOR_DECISION: REDIRECT`
@@ -59,6 +61,7 @@ Files touched: ...
 Tests: not run | passing | failing
 Next step: ...
 Blocker: none | ...
+Last event id: none | <EVENT_ID>
 Last updated: YYYY-MM-DD HH:MM
 ```
 
@@ -75,4 +78,7 @@ When a stop rule triggers:
 1. Update STATUS.md
 2. Set `Needs supervisor decision: yes`
 3. Set `Requested decision:` to the closest match
-4. Stop active implementation and wait for the supervisor
+4. Reuse `Last event id` if you are retrying the same unresolved checkpoint; otherwise generate one through `.fleetclaw/bin/notify-supervisor.sh`
+5. Run `.fleetclaw/bin/notify-supervisor.sh --agent-id {{AGENT_ID}} --state <state> --request <request> --summary "<short factual checkpoint>" --status-file .fleetclaw/agents/{{AGENT_ID}}/STATUS.md`
+6. If notification fails, leave `Needs supervisor decision: yes` in STATUS.md and wait for polling fallback
+7. Stop active implementation and wait for the supervisor

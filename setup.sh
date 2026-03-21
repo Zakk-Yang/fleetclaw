@@ -394,7 +394,7 @@ PY
 )"
 
         if [[ -n "${heartbeat_every}" && "${heartbeat_every}" != "0" && "${heartbeat_every}" != "0m" ]]; then
-            warn "OpenClaw global heartbeat is enabled (${heartbeat_every}, target=${heartbeat_target}). FleetClaw agents inherit agents.defaults.heartbeat unless you override it in your main OpenClaw config."
+            warn "OpenClaw global heartbeat is enabled (${heartbeat_every}, target=${heartbeat_target}). FleetClaw no longer enables coding-agent heartbeats by default, so keep this in mind if you later add heartbeat settings to the dedicated profile."
         fi
     fi
 
@@ -538,6 +538,9 @@ main() {
     REPORT_TZ=$(yval_default '.supervisor.morning_report_tz' 'Europe/London')
     SUPERVISOR_OBJECTIVE=$(resolve_scope_text '.supervisor.objective' '.supervisor.objective_file' '' 'supervisor objective')
     SUPERVISOR_HANDOFF_RULES=$(resolve_scope_text '.supervisor.handoff_rules' '.supervisor.handoff_rules_file' '' 'supervisor handoff rules')
+    PROTOCOL_POLLING_FALLBACK=$(yval_default '.protocol.polling_fallback' 'true')
+    AGENT_NOTIFY_MAX_TOKENS=$(yval_default '.protocol.agent_to_supervisor_max_tokens' '80')
+    SUPERVISOR_REPLY_MAX_TOKENS=$(yval_default '.protocol.supervisor_to_agent_max_tokens' '120')
     SUPERVISOR_OBJECTIVE_BLOCK=""
     SUPERVISOR_HANDOFF_RULES_BLOCK=""
     SUPERVISOR_REVIEW_SURFACE_BLOCK=""
@@ -631,6 +634,7 @@ When accepting user-facing work, verify that this primary review surface reflect
     info "Supervisor: ${SUPERVISOR_MODEL_LABEL} checking every ${CHECK_INTERVAL}m"
     info "Compact threshold: ${COMPACT_THRESHOLD}%"
     info "Review checkpoints: ${REVIEW_CHECKPOINT_MINS}m or ${MAX_COMMITS_WITHOUT_DECISION} commits"
+    info "Control-plane budget: ${AGENT_NOTIFY_MAX_TOKENS}t agent->supervisor / ${SUPERVISOR_REPLY_MAX_TOKENS}t supervisor->agent"
     info "Worktree base: ${WORKTREE_BASE}"
     info "Template dir: ${TEMPLATE_DIR}"
     info "Profile state dir: ${PROFILE_ROOT}"
@@ -681,12 +685,32 @@ When accepting user-facing work, verify that this primary review surface reflect
 
     # --- Create per-agent directories in project root ---
     FLEETCLAW_AGENTS_DIR="${REPO_DIR}/.fleetclaw/agents"
+    FLEETCLAW_BIN_DIR="${REPO_DIR}/.fleetclaw/bin"
+    FLEETCLAW_LOGS_DIR="${REPO_DIR}/.fleetclaw/logs"
+    FLEETCLAW_RUNTIME_ENV="${REPO_DIR}/.fleetclaw/runtime.env"
+    mkdir -p "${FLEETCLAW_BIN_DIR}" "${FLEETCLAW_LOGS_DIR}"
     for i in $(seq 0 $((AGENT_COUNT - 1))); do
         AGENT_ID="${AGENT_IDS[i]}"
         AGENT_DIR="${FLEETCLAW_AGENTS_DIR}/${AGENT_ID}"
         mkdir -p "${AGENT_DIR}/memory"
         log "Created agent directory: .fleetclaw/agents/${AGENT_ID}"
     done
+
+    cp "${SCRIPT_DIR}/bin/"*.sh "${FLEETCLAW_BIN_DIR}/"
+    chmod +x "${FLEETCLAW_BIN_DIR}/"*.sh
+
+    cat > "${FLEETCLAW_RUNTIME_ENV}" <<EOF
+FLEETCLAW_PROJECT_NAME="${PROJECT_NAME}"
+FLEETCLAW_PROJECT_ROOT="${REPO_DIR}"
+FLEETCLAW_PROJECT_SLUG="${PROJECT_SLUG}"
+FLEETCLAW_OPENCLAW_PROFILE="${PROJECT_PROFILE}"
+FLEETCLAW_SUPERVISOR_RUNTIME_ID="$(agent_runtime_id "supervisor")"
+FLEETCLAW_CONTROL_PLANE_LOG="${FLEETCLAW_LOGS_DIR}/control-plane.jsonl"
+FLEETCLAW_AGENT_NOTIFY_MAX_TOKENS="${AGENT_NOTIFY_MAX_TOKENS}"
+FLEETCLAW_SUPERVISOR_REPLY_MAX_TOKENS="${SUPERVISOR_REPLY_MAX_TOKENS}"
+FLEETCLAW_POLLING_FALLBACK="${PROTOCOL_POLLING_FALLBACK}"
+EOF
+    log "Seeded .fleetclaw/bin and runtime.env"
 
     # --- Generate PROJECT.md (shared context for all agents) ---
     PROJECT_MD="${SCRIPT_DIR}/generated/PROJECT.md"
@@ -760,7 +784,9 @@ When accepting user-facing work, verify that this primary review surface reflect
         SUPERVISOR_OBJECTIVE_BLOCK SUPERVISOR_HANDOFF_RULES_BLOCK \
         SUPERVISOR_REVIEW_SURFACE_BLOCK \
         CHECK_INTERVAL STALL_TIMEOUT COMPACT_THRESHOLD \
-        REVIEW_CHECKPOINT_MINS MAX_COMMITS_WITHOUT_DECISION
+        REVIEW_CHECKPOINT_MINS MAX_COMMITS_WITHOUT_DECISION \
+        AGENT_NOTIFY_MAX_TOKENS SUPERVISOR_REPLY_MAX_TOKENS \
+        PROTOCOL_POLLING_FALLBACK
 
     log "Generated supervisor SOUL.md"
 
@@ -779,7 +805,8 @@ When accepting user-facing work, verify that this primary review surface reflect
         AGENT_SOUL="${SCRIPT_DIR}/generated/${AGENT_ID}-SOUL.md"
         render_template "${AGENT_SOUL_TEMPLATE}" "${AGENT_SOUL}" \
             AGENT_ID PROJECT_NAME AGENT_TASK FOCUS CHECK_INTERVAL \
-            MAX_COMMITS_WITHOUT_DECISION REVIEW_CHECKPOINT_MINS
+            MAX_COMMITS_WITHOUT_DECISION REVIEW_CHECKPOINT_MINS \
+            AGENT_NOTIFY_MAX_TOKENS
 
         log "Generated ${AGENT_ID} SOUL.md"
 
@@ -890,10 +917,7 @@ ${AUTH_CONFIG_BLOCK}  gateway: {
     defaults: {
       model: ${SUPERVISOR_MODEL_JSON},
       workspace: "${PROFILE_ROOT}/workspace",
-${CLI_BACKENDS_CONFIG_JSON}      heartbeat: {
-        every: "2m"
-      },
-      compaction: {
+${CLI_BACKENDS_CONFIG_JSON}      compaction: {
         mode: "safeguard",
         memoryFlush: {
           enabled: true,
@@ -961,6 +985,7 @@ upsert_cron_job "${PROGRESS_CRON_NAME}" \\
   --agent "$(agent_runtime_id "supervisor")" \\
   --every "${CHECK_INTERVAL}m" \\
   --session isolated \\
+  --light-context \\
   --message "Run progress check cycle. Check all ${AGENT_COUNT} coding agents. Follow your SOUL.md instructions." \\
   --no-deliver$(if [[ ${#PROGRESS_THINKING_ARGS[@]} -gt 0 ]]; then printf ' \\\n  --thinking "%s"' "${PROGRESS_THINKING_ARGS[1]}"; fi)
 CRONEOF
@@ -973,6 +998,7 @@ CRONEOF
             echo "  --cron \"0 ${REPORT_HOUR} * * *\" \\"
             echo "  --tz \"${REPORT_TZ}\" \\"
             echo "  --session isolated \\"
+            echo "  --light-context \\"
             echo "  --message \"Generate morning status report for ${PROJECT_NAME}. Summarize: each agent's progress, blockers, context health, total costs. Be concise.\" \\"
             if [[ -n "${SUPERVISOR_THINKING}" && "${SUPERVISOR_THINKING}" != "null" ]]; then
                 echo "  --thinking \"${SUPERVISOR_THINKING}\" \\"

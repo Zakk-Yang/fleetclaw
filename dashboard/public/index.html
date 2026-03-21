@@ -849,6 +849,51 @@ function renderFeedbackEntries(entries) {
   `;
 }
 
+function formatControlPlaneStatus(status) {
+  const value = String(status || '').toLowerCase();
+  if (!value) return 'unknown';
+  if (value === 'dispatch-error') return 'dispatch error';
+  return value;
+}
+
+function renderControlPlaneEntries(entries) {
+  if (!entries || !entries.length) {
+    return '<div class="subtle">No control-plane notifications recorded yet.</div>';
+  }
+
+  return `
+    <div class="feedback-feed">
+      ${entries.map((entry) => `
+        <article class="feedback-entry">
+          <div class="feedback-entry__top">
+            <div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <strong>${esc(entry.direction === 'supervisor_to_agent' ? 'Supervisor -> agent' : 'Agent -> supervisor')}</strong>
+                <span class="status-badge ${entry.status === 'dispatch-error' ? 'status-blocked' : 'status-monitoring'}">${esc(formatControlPlaneStatus(entry.status))}</span>
+                ${entry.decision ? `<span class="status-badge ${decisionClass(entry.decision)}">${esc(entry.decision)}</span>` : ''}
+                ${entry.request ? `<span class="status-badge status-ready-for-review">${esc(entry.request)}</span>` : ''}
+              </div>
+              <div class="feedback-entry__meta">
+                <span>${fmtTime(entry.createdAt)}</span>
+                <span>${esc(entry.eventId || '-')}</span>
+              </div>
+            </div>
+          </div>
+          <div class="feedback-entry__surface">
+            ${entry.agentId ? `Agent: ${esc(entry.agentId)}` : ''}
+            ${entry.eventType ? ` · Event: ${esc(entry.eventType)}` : ''}
+            ${entry.state ? ` · State: ${esc(entry.state)}` : ''}
+          </div>
+          ${entry.summary ? `<div class="feedback-entry__message">${esc(entry.summary)}</div>` : ''}
+          ${entry.next ? `<div class="feedback-entry__message">${esc(entry.next)}</div>` : ''}
+          ${entry.reason ? `<div class="feedback-entry__message">${esc(entry.reason)}</div>` : ''}
+          ${entry.error ? `<div class="feedback-entry__message">${esc(entry.error)}</div>` : ''}
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
 function renderFeedbackForm(projectData, feedback) {
   const targets = feedback?.targets || [];
   const noticeClass = feedbackNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
@@ -1112,6 +1157,7 @@ function renderAgentSection(agent) {
                 <div class="field-list">
                   <div class="field-row"><span class="field-label">Tests</span><span class="field-value">${esc(agent.statusFields.tests || '-')}</span></div>
                   <div class="field-row"><span class="field-label">Decision needed</span><span class="field-value">${esc(agent.statusFields['needs supervisor decision'] || 'no')}</span></div>
+                  <div class="field-row"><span class="field-label">Last event id</span><span class="field-value mono">${esc(agent.statusFields['last event id'] || 'none')}</span></div>
                   <div class="field-row"><span class="field-label">Last updated</span><span class="field-value">${esc(agent.lastUpdatedDisplay || '-')}</span></div>
                 </div>
               </div>
@@ -1209,7 +1255,7 @@ function renderSupervisorSection(supervisor, projectData, feedback) {
   `;
 }
 
-function renderSupport(projectData, metrics) {
+function renderSupport(projectData, metrics, controlPlane) {
   const changedFiles = projectData.git.modifiedFiles || projectData.git.changedFiles || [];
   const untrackedCount = Number(projectData.git.untrackedCount || 0);
 
@@ -1259,6 +1305,16 @@ function renderSupport(projectData, metrics) {
         </section>
       </div>
       <div class="support-stack">
+        <section class="card">
+          <div class="card-header"><h2>Control plane</h2></div>
+          <div class="card-body">
+            <div class="field-row"><span class="field-label">Polling fallback</span><span class="field-value">${esc(String(projectData.protocol?.pollingFallback ?? true))}</span></div>
+            <div class="field-row"><span class="field-label">Agent -> supervisor budget</span><span class="field-value">${esc(String(projectData.protocol?.agentToSupervisorMaxTokens || 80))} tokens</span></div>
+            <div class="field-row"><span class="field-label">Supervisor -> agent budget</span><span class="field-value">${esc(String(projectData.protocol?.supervisorToAgentMaxTokens || 120))} tokens</span></div>
+            <div class="eyebrow" style="margin-top:12px;">Recent events</div>
+            ${renderControlPlaneEntries(controlPlane?.entries || [])}
+          </div>
+        </section>
         <section class="card">
           <div class="card-header"><h2>Git</h2></div>
           <div class="card-body">
@@ -1457,6 +1513,7 @@ function render() {
   const supervisor = dashboardData.supervisor || {};
   const metrics = dashboardData.metrics || { markdown: { rows: [] }, live: { rows: [] } };
   const feedback = dashboardData.feedback || { entries: [], targets: [] };
+  const controlPlane = dashboardData.controlPlane || { entries: [] };
 
   if (!feedbackDraft.surface) {
     feedbackDraft.surface = projectData.review?.url || '';
@@ -1472,7 +1529,7 @@ function render() {
     renderSupervisorSection(supervisor, projectData, feedback),
     ...agents.map(renderAgentSection),
   ].join('');
-  document.getElementById('support').innerHTML = renderSupport(projectData, metrics);
+  document.getElementById('support').innerHTML = renderSupport(projectData, metrics, controlPlane);
 
   wireTabs();
   wireFeedbackForm(projectData);

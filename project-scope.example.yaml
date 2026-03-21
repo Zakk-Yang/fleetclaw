@@ -57,6 +57,11 @@ agents:
     focus_dirs:
       - "src/"                     # Directories this agent is allowed to modify
 
+protocol:
+  polling_fallback: true           # Keep supervisor polling STATUS.md even when compact notifications are enabled
+  agent_to_supervisor_max_tokens: 80
+  supervisor_to_agent_max_tokens: 120
+
   # Add more agents as needed:
   # - id: "backend-dev"
   #   model: "openai-codex/gpt-5.4"

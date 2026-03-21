@@ -293,16 +293,9 @@ else
 fi
 echo ""
 
-# --- Step 4: Enable heartbeat ---
-echo "--- Step 4: Heartbeat ---"
-"${OPENCLAW_CMD[@]}" system heartbeat enable 2>&1 | tail -1 || true
-log "Heartbeat enabled (gateway keeps all agents alive)"
-echo ""
-
-# --- Step 5: Seed agent sessions ---
-# Send an initial message to each agent to create their session.
-# The gateway heartbeat will keep them working continuously after this.
-echo "--- Step 5: Seed Agent Sessions ---"
+# --- Step 4: Seed agent sessions ---
+# Send an initial message to each coding agent to create its main session.
+echo "--- Step 4: Seed Agent Sessions ---"
 for i in $(seq 0 $((AGENT_COUNT - 1))); do
     AGENT_ID=$(yq eval ".agents[$i].id" "$SCOPE_FILE")
     AGENT_THINKING=$(resolve_thinking_level ".agents[$i].thinking // .advanced.default_agent_thinking" '')
@@ -316,10 +309,10 @@ for i in $(seq 0 $((AGENT_COUNT - 1))); do
 
     info "Seeding session for ${AGENT_ID}..."
     nohup "${SEED_ARGS[@]}" >/dev/null 2>&1 &
-    log "Agent ${AGENT_ID} seeded (heartbeat will keep it alive)"
+    log "Agent ${AGENT_ID} seeded"
 done
 
-# Seed supervisor
+# Seed supervisor main session for human feedback and manual inspection.
 SUPERVISOR_RUNTIME_ID="$(agent_runtime_id "supervisor")"
 SUPERVISOR_SEED_ARGS=("${OPENCLAW_CMD[@]}" agent --agent "${SUPERVISOR_RUNTIME_ID}")
 if [[ -n "${SUPERVISOR_THINKING}" && "${SUPERVISOR_THINKING}" != "null" ]]; then
@@ -329,19 +322,19 @@ SUPERVISOR_SEED_ARGS+=(--message "Start your supervisor loop. Read SOUL.md and R
 
 info "Seeding supervisor session..."
 nohup "${SUPERVISOR_SEED_ARGS[@]}" >/dev/null 2>&1 &
-log "Supervisor seeded (heartbeat + cron will keep it active)"
+log "Supervisor seeded"
 echo ""
 
-# --- Step 6: Start status reconciler ---
-echo "--- Step 6: Status Reconciler ---"
+# --- Step 5: Start status reconciler ---
+echo "--- Step 5: Status Reconciler ---"
 RECONCILER_STARTED=0
 if start_reconciler; then
     RECONCILER_STARTED=1
 fi
 echo ""
 
-# --- Step 7: Start dashboard ---
-echo "--- Step 7: Dashboard ---"
+# --- Step 6: Start dashboard ---
+echo "--- Step 6: Dashboard ---"
 DASHBOARD_STARTED=0
 if start_dashboard; then
     DASHBOARD_STARTED=1

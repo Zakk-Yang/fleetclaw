@@ -117,7 +117,7 @@ echo ""
 if [[ "${AUTO_YES}" -eq 1 ]]; then
     info "Auto-confirm enabled"
 else
-    read -p "This will stop the dashboard, disable heartbeat, remove cron jobs, and clean generated files. Continue? (y/N) " -n 1 -r
+    read -p "This will stop the dashboard, remove cron jobs, disable heartbeat if it was enabled, and clean generated files. Continue? (y/N) " -n 1 -r
     echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo "Aborted."
@@ -147,8 +147,8 @@ for job_name in \
 done
 log "Cron jobs disabled"
 
-# Disable heartbeat
-warn "Disabling heartbeat..."
+# Disable heartbeat if it was previously enabled
+warn "Disabling heartbeat if enabled..."
 if "${OPENCLAW_CMD[@]}" system heartbeat disable >/dev/null 2>&1; then
     log "Heartbeat disabled"
 else
