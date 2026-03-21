@@ -430,6 +430,45 @@
     line-height: 1.5;
   }
 
+  .metric-card__breakdown {
+    display: grid;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .metric-breakdown-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    align-items: start;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 160, 179, 0.08);
+  }
+
+  .metric-breakdown-row__label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #eef4fb;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .metric-breakdown-row__value {
+    font-size: 12px;
+    font-weight: 700;
+    color: #eef4fb;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  .metric-breakdown-row__note {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+
   .metric-card__definition strong,
   .metric-card__formula strong {
     color: var(--text);
@@ -1340,6 +1379,17 @@ function renderMetricSections(analytics) {
                   </div>
                   <div class="metric-card__body">
                     ${metric.secondary ? `<div class="metric-card__secondary">${esc(metric.secondary)}</div>` : ''}
+                    ${Array.isArray(metric.breakdown) && metric.breakdown.length ? `
+                      <div class="metric-card__breakdown">
+                        ${metric.breakdown.map((item) => `
+                          <div class="metric-breakdown-row">
+                            <div class="metric-breakdown-row__label">${esc(item.label || '-')}</div>
+                            <div class="metric-breakdown-row__value">${esc(item.value || '-')}</div>
+                            ${item.note ? `<div class="metric-breakdown-row__note">${esc(item.note)}</div>` : ''}
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : ''}
                     ${metric.definition ? `<div class="metric-card__definition"><strong>Definition</strong> ${esc(metric.definition)}</div>` : ''}
                     ${metric.formula ? `<div class="metric-card__formula"><strong>Formula</strong> ${esc(metric.formula)}</div>` : ''}
                   </div>

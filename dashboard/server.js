@@ -886,6 +886,7 @@ function buildMetricCard(card) {
     secondary: card.secondary || '',
     definition: card.definition || '',
     formula: card.formula || '',
+    breakdown: Array.isArray(card.breakdown) ? card.breakdown : [],
     tone: card.tone || 'info',
   };
 }
@@ -908,6 +909,25 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const supervisorTokensPct = mainTokensCurrent > 0 ? (supervisorTokensCurrent / mainTokensCurrent) * 100 : null;
   const avgContextPct = safeAverage(mainRows.map((row) => row.usagePct));
   const maxContextPct = liveRows.length ? Math.max(...liveRows.map((row) => Number(row.usagePct) || 0)) : 0;
+  const roleDisplayOrder = ['supervisor', ...agents.map((agent) => agent.id)];
+  const roleTokenBuckets = liveRows.reduce((map, row) => {
+    const label = String(row.displayAgentId || row.runtimeId || 'unknown');
+    const existing = map.get(label) || {
+      label,
+      totalTokens: 0,
+      sessionCount: 0,
+      mainCount: 0,
+      cronCount: 0,
+      otherCount: 0,
+    };
+    existing.totalTokens += Number(row.totalTokens) || 0;
+    existing.sessionCount += 1;
+    if (row.sessionKind === 'main') existing.mainCount += 1;
+    else if (row.sessionKind === 'cron') existing.cronCount += 1;
+    else existing.otherCount += 1;
+    map.set(label, existing);
+    return map;
+  }, new Map());
 
   const activeAgents = agents.filter((agent) => {
     const state = String(agent.statusFields?.state || '').toLowerCase();
@@ -1054,6 +1074,33 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const projectHourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
     ? totalTokensCurrent / elapsedProjectHours
     : null;
+  const roleTokenBreakdown = Array.from(roleTokenBuckets.values())
+    .sort((left, right) => {
+      const leftIndex = roleDisplayOrder.indexOf(left.label);
+      const rightIndex = roleDisplayOrder.indexOf(right.label);
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        if (leftIndex === -1) return 1;
+        if (rightIndex === -1) return -1;
+        return leftIndex - rightIndex;
+      }
+      return right.totalTokens - left.totalTokens;
+    })
+    .map((bucket) => {
+      const sharePct = totalTokensCurrent > 0 ? (bucket.totalTokens / totalTokensCurrent) * 100 : null;
+      const hourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
+        ? bucket.totalTokens / elapsedProjectHours
+        : null;
+      const sessionParts = [];
+      if (bucket.mainCount) sessionParts.push(bucket.mainCount === 1 ? 'main' : `${bucket.mainCount} main`);
+      if (bucket.cronCount) sessionParts.push(bucket.cronCount === 1 ? 'cron' : `${bucket.cronCount} cron`);
+      if (bucket.otherCount) sessionParts.push(bucket.otherCount === 1 ? '1 other' : `${bucket.otherCount} other`);
+      return {
+        label: bucket.label,
+        tokensValue: formatTokenCount(bucket.totalTokens),
+        hourlyValue: formatRate(hourlyTokens),
+        note: `${formatPct(sharePct)} of project tokens${sessionParts.length ? ` · ${sessionParts.join(' + ')}` : ''}`,
+      };
+    });
 
   const alerts = [];
   const highContextRows = mainRows.filter((row) => Number(row.usagePct) >= HIGH_CONTEXT_ALERT_PCT);
@@ -1166,6 +1213,11 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
               : `Current live footprint · ${liveRows.length} live sessions`,
             definition: 'Approximate token footprint across live sessions that currently report totals. The today delta uses dashboard snapshots, so it is sampled rather than billing-exact.',
             formula: 'sum(totalTokens across live sessions) and current total minus first dashboard snapshot of the day',
+            breakdown: roleTokenBreakdown.map((item) => ({
+              label: item.label,
+              value: item.tokensValue,
+              note: item.note,
+            })),
             tone: 'info',
           }),
           buildMetricCard({
@@ -1175,6 +1227,11 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
             secondary: `${allLanesDone ? 'Frozen at completion' : 'Using current project time'} · elapsed ${formatElapsedHours(elapsedProjectHours)}`,
             definition: 'Average hourly token usage across the project lifecycle. The denominator runs from first observed project activity until now, or until completion when all lanes are done.',
             formula: 'project tokens / elapsed project hours',
+            breakdown: roleTokenBreakdown.map((item) => ({
+              label: item.label,
+              value: item.hourlyValue,
+              note: item.note,
+            })),
             tone: Number.isFinite(Number(projectHourlyTokens)) && projectHourlyTokens > 12000 ? 'warning' : 'info',
           }),
           buildMetricCard({
