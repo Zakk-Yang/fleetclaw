@@ -155,6 +155,8 @@ resolve_context_limit_for_profile() {
     local profile_name="$1"
     local sessions_json
     local config_value
+    local model_status
+    local models_json
     local resolved_limit=""
 
     if command -v openclaw >/dev/null 2>&1; then
@@ -209,6 +211,48 @@ except json.JSONDecodeError:
 
 if isinstance(value, int) and value > 0:
     print(value)
+PY
+)"
+            fi
+        fi
+
+        if [[ -z "${resolved_limit}" ]]; then
+            model_status="$(openclaw --profile "${profile_name}" models status --json 2>/dev/null || true)"
+            models_json="$(openclaw --profile "${profile_name}" models list --json 2>/dev/null || true)"
+            if [[ -n "${model_status}" && -n "${models_json}" ]]; then
+                resolved_limit="$(python3 - "${model_status}" "${models_json}" <<'PY'
+import json
+import sys
+
+status_raw = sys.argv[1]
+models_raw = sys.argv[2]
+if not status_raw or not models_raw:
+    raise SystemExit(0)
+
+try:
+    status_payload = json.loads(status_raw)
+    models_payload = json.loads(models_raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+default_model = ""
+if isinstance(status_payload, dict):
+    default_model = str(status_payload.get("resolvedDefault") or status_payload.get("defaultModel") or "").strip()
+
+models = models_payload.get("models") if isinstance(models_payload, dict) else []
+if not isinstance(models, list):
+    raise SystemExit(0)
+
+candidate = None
+if default_model:
+    candidate = next((model for model in models if isinstance(model, dict) and str(model.get("key") or "") == default_model), None)
+if candidate is None:
+    candidate = next((model for model in models if isinstance(model, dict) and "default" in (model.get("tags") or [])), None)
+
+if isinstance(candidate, dict):
+    context_window = candidate.get("contextWindow")
+    if isinstance(context_window, int) and context_window > 0:
+        print(context_window)
 PY
 )"
             fi

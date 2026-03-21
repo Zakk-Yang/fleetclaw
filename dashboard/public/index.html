@@ -1726,7 +1726,7 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
             ${renderQuickStat('Active lanes', fmtInt(overview.activeAgents), `${fmtInt(overview.blockedAgents)} blocked`)}
             ${renderQuickStat('Accepted today', fmtInt(overview.acceptedTasksToday), 'Unique ACCEPT_DONE decisions')}
             ${renderQuickStat('Pending review', fmtInt(overview.pendingReviews), `${fmtInt(overview.diffAwaitingReviewFiles)} files awaiting review`)}
-            ${renderQuickStat('Avg context', fmtPct(overview.avgContextPct), `Max ${fmtPct(overview.maxContextPct)}`)}
+            ${renderQuickStat('Avg context', fmtPct(overview.avgRoleContextPct ?? overview.avgContextPct), `Main avg ${fmtPct(overview.avgMainContextPct)} · Max main ${fmtPct(overview.maxMainContextPct ?? overview.maxContextPct)}`)}
             ${renderQuickStat('Project hourly tokens', formatRate(overview.projectHourlyTokens), `Elapsed ${formatElapsedHours(overview.projectElapsedHours)}`)}
             ${renderQuickStat('Supervisor share', fmtPct(overview.supervisorTokensPct), 'Main-session token share')}
             ${renderQuickStat('Project tokens', fmtInt(overview.projectTokensCurrent), overview.projectTokensToday === null || overview.projectTokensToday === undefined ? 'Current live-session footprint' : `Today +${fmtInt(overview.projectTokensToday)}`)}

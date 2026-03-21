@@ -891,6 +891,19 @@ function buildMetricCard(card) {
   };
 }
 
+function resolveModelContextLimit(profile) {
+  const status = execFileJson('openclaw', ['--profile', profile, 'models', 'status', '--json']);
+  const listing = execFileJson('openclaw', ['--profile', profile, 'models', 'list', '--json']);
+  const defaultModel = String(status?.resolvedDefault || status?.defaultModel || '').trim();
+  const models = Array.isArray(listing?.models) ? listing.models : [];
+  if (!models.length) return null;
+
+  const candidate = models.find((model) => String(model?.key || '') === defaultModel)
+    || models.find((model) => Array.isArray(model?.tags) && model.tags.includes('default'));
+  const contextWindow = Number(candidate?.contextWindow);
+  return Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : null;
+}
+
 function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git, controlPlaneEntries) {
   const now = new Date();
   const startOfDay = startOfLocalDay(now);
@@ -907,20 +920,33 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const mainTokensCurrent = safeSum(mainRows.map((row) => row.totalTokens));
   const supervisorTokensCurrent = Number(supervisorMain?.totalTokens) || 0;
   const supervisorTokensPct = mainTokensCurrent > 0 ? (supervisorTokensCurrent / mainTokensCurrent) * 100 : null;
-  const avgContextPct = safeAverage(mainRows.map((row) => row.usagePct));
-  const maxContextPct = liveRows.length ? Math.max(...liveRows.map((row) => Number(row.usagePct) || 0)) : 0;
+  const avgMainContextPct = safeAverage(mainRows.map((row) => row.usagePct));
+  const maxMainContextPct = mainRows.length ? Math.max(...mainRows.map((row) => Number(row.usagePct) || 0)) : 0;
+  const maxLiveContextPct = liveRows.length ? Math.max(...liveRows.map((row) => Number(row.usagePct) || 0)) : 0;
   const roleDisplayOrder = ['supervisor', ...agents.map((agent) => agent.id)];
+  const compareRoleLabels = (leftLabel, rightLabel) => {
+    const leftIndex = roleDisplayOrder.indexOf(leftLabel);
+    const rightIndex = roleDisplayOrder.indexOf(rightLabel);
+    if (leftIndex !== -1 || rightIndex !== -1) {
+      if (leftIndex === -1) return 1;
+      if (rightIndex === -1) return -1;
+      return leftIndex - rightIndex;
+    }
+    return String(leftLabel).localeCompare(String(rightLabel));
+  };
   const roleTokenBuckets = liveRows.reduce((map, row) => {
     const label = String(row.displayAgentId || row.runtimeId || 'unknown');
     const existing = map.get(label) || {
       label,
       totalTokens: 0,
+      totalContextTokens: 0,
       sessionCount: 0,
       mainCount: 0,
       cronCount: 0,
       otherCount: 0,
     };
     existing.totalTokens += Number(row.totalTokens) || 0;
+    existing.totalContextTokens += Number(row.contextTokens) || 0;
     existing.sessionCount += 1;
     if (row.sessionKind === 'main') existing.mainCount += 1;
     else if (row.sessionKind === 'cron') existing.cronCount += 1;
@@ -1015,6 +1041,36 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
 
   const compactionsToday = countDetectedCompactions(profile, runtimeIds, startOfDay);
   const tokensPerAcceptedTask = acceptedTasksToday > 0 ? totalTokensCurrent / acceptedTasksToday : null;
+  const roleContextBreakdown = Array.from(roleTokenBuckets.values())
+    .sort((left, right) => compareRoleLabels(left.label, right.label))
+    .map((bucket) => {
+      const usagePct = bucket.totalContextTokens > 0 ? (bucket.totalTokens / bucket.totalContextTokens) * 100 : null;
+      const sessionParts = [];
+      if (bucket.mainCount) sessionParts.push(bucket.mainCount === 1 ? 'main' : `${bucket.mainCount} main`);
+      if (bucket.cronCount) sessionParts.push(bucket.cronCount === 1 ? 'cron' : `${bucket.cronCount} cron`);
+      if (bucket.otherCount) sessionParts.push(bucket.otherCount === 1 ? '1 other' : `${bucket.otherCount} other`);
+      return {
+        ...bucket,
+        usagePct,
+        sessionMix: sessionParts.join(' + '),
+        value: formatPct(usagePct),
+        note: `${formatTokenCount(bucket.totalTokens)} / ${formatTokenCount(bucket.totalContextTokens)}${sessionParts.length ? ` · ${sessionParts.join(' + ')}` : ''}`,
+      };
+    });
+  const avgRoleContextPct = safeAverage(roleContextBreakdown.map((item) => item.usagePct));
+  const mainContextBreakdown = mainRows
+    .slice()
+    .sort((left, right) => compareRoleLabels(left.displayAgentId, right.displayAgentId))
+    .map((row) => ({
+      label: row.displayAgentId,
+      value: formatPct(row.usagePct),
+      note: `${formatTokenCount(row.totalTokens)} / ${formatTokenCount(row.contextTokens)} · ${row.sessionLabel}`,
+    }));
+  const contextWarning = [
+    Number(avgRoleContextPct),
+    Number(avgMainContextPct),
+    Number(maxMainContextPct),
+  ].some((value) => Number.isFinite(value) && value >= 70);
 
   const snapshotsState = loadDashboardSnapshots(projectRoot);
   const currentSnapshot = {
@@ -1022,7 +1078,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     totalTokens: Math.round(totalTokensCurrent),
     mainTokens: Math.round(mainTokensCurrent),
     supervisorTokens: Math.round(supervisorTokensCurrent),
-    avgContextPct: Number.isFinite(Number(avgContextPct)) ? Number(avgContextPct.toFixed(2)) : null,
+    avgContextPct: Number.isFinite(Number(avgRoleContextPct)) ? Number(avgRoleContextPct.toFixed(2)) : null,
+    avgMainContextPct: Number.isFinite(Number(avgMainContextPct)) ? Number(avgMainContextPct.toFixed(2)) : null,
     activeAgents,
     blockedAgents: blockedAgents.length,
     acceptedTasksToday,
@@ -1074,31 +1131,17 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const projectHourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
     ? totalTokensCurrent / elapsedProjectHours
     : null;
-  const roleTokenBreakdown = Array.from(roleTokenBuckets.values())
-    .sort((left, right) => {
-      const leftIndex = roleDisplayOrder.indexOf(left.label);
-      const rightIndex = roleDisplayOrder.indexOf(right.label);
-      if (leftIndex !== -1 || rightIndex !== -1) {
-        if (leftIndex === -1) return 1;
-        if (rightIndex === -1) return -1;
-        return leftIndex - rightIndex;
-      }
-      return right.totalTokens - left.totalTokens;
-    })
+  const roleTokenBreakdown = roleContextBreakdown
     .map((bucket) => {
       const sharePct = totalTokensCurrent > 0 ? (bucket.totalTokens / totalTokensCurrent) * 100 : null;
       const hourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
         ? bucket.totalTokens / elapsedProjectHours
         : null;
-      const sessionParts = [];
-      if (bucket.mainCount) sessionParts.push(bucket.mainCount === 1 ? 'main' : `${bucket.mainCount} main`);
-      if (bucket.cronCount) sessionParts.push(bucket.cronCount === 1 ? 'cron' : `${bucket.cronCount} cron`);
-      if (bucket.otherCount) sessionParts.push(bucket.otherCount === 1 ? '1 other' : `${bucket.otherCount} other`);
       return {
         label: bucket.label,
         tokensValue: formatTokenCount(bucket.totalTokens),
         hourlyValue: formatRate(hourlyTokens),
-        note: `${formatPct(sharePct)} of project tokens${sessionParts.length ? ` · ${sessionParts.join(' + ')}` : ''}`,
+        note: `${formatPct(sharePct)} of project tokens${bucket.sessionMix ? ` · ${bucket.sessionMix}` : ''}`,
       };
     });
 
@@ -1170,8 +1213,12 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       blockedAgents: blockedAgents.length,
       pendingReviews: pendingAgents.length,
       acceptedTasksToday,
-      avgContextPct,
-      maxContextPct,
+      avgContextPct: avgRoleContextPct,
+      avgRoleContextPct,
+      avgMainContextPct,
+      maxContextPct: maxMainContextPct,
+      maxMainContextPct,
+      maxLiveContextPct,
       projectTokensCurrent: totalTokensCurrent,
       projectTokensToday: tokensToday,
       projectHourlyTokens,
@@ -1263,12 +1310,27 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
           }),
           buildMetricCard({
             id: 'avg-context',
-            label: 'Avg context %',
-            value: formatPct(avgContextPct),
-            secondary: `Max ${formatPct(maxContextPct)} across live sessions`,
-            definition: 'Mean current context occupancy across main sessions with reported token totals. Higher values increase forgetting and compaction risk.',
+            label: 'Avg role context %',
+            value: formatPct(avgRoleContextPct),
+            secondary: `${formatInt(roleContextBreakdown.length)} roles · main avg ${formatPct(avgMainContextPct)} · max main ${formatPct(maxMainContextPct)}`,
+            definition: 'Mean current context occupancy across roles. Each role aggregates its live sessions first, so the supervisor includes main plus cron capacity before being averaged with the agent roles.',
+            formula: 'average(sum(role tokens) / sum(role context limits) across roles)',
+            breakdown: roleContextBreakdown.map((item) => ({
+              label: item.label,
+              value: item.value,
+              note: item.note,
+            })),
+            tone: contextWarning ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'avg-main-context',
+            label: 'Avg main context %',
+            value: formatPct(avgMainContextPct),
+            secondary: `${formatInt(mainRows.length)} main sessions · max ${formatPct(maxMainContextPct)} · live max ${formatPct(maxLiveContextPct)}`,
+            definition: 'Mean current context occupancy across persistent main sessions only. This is the direct forgetting-risk view for the ongoing supervisor and agent conversations.',
             formula: 'average(totalTokens / contextTokens for main sessions)',
-            tone: Number.isFinite(Number(avgContextPct)) && avgContextPct >= 70 ? 'warning' : 'info',
+            breakdown: mainContextBreakdown,
+            tone: contextWarning ? 'warning' : 'info',
           }),
           buildMetricCard({
             id: 'compactions',
@@ -1471,6 +1533,11 @@ function resolveContextLimit(profile, sessions) {
       const limit = Number(parsed);
       if (Number.isFinite(limit) && limit > 0) return limit;
     } catch {}
+  }
+
+  const modelContextLimit = resolveModelContextLimit(profile);
+  if (Number.isFinite(modelContextLimit) && modelContextLimit > 0) {
+    return modelContextLimit;
   }
 
   return 200000;
