@@ -882,17 +882,19 @@ function usageClass(status) {
 }
 
 function fmtPct(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return '-';
   return `${Number(value).toFixed(2)}%`;
 }
 
 function fmtInt(value) {
+  if (value === null || value === undefined || value === '') return '-';
   const number = Number(value);
   if (!Number.isFinite(number)) return '-';
   return number.toLocaleString();
 }
 
 function formatRate(value) {
+  if (value === null || value === undefined || value === '') return 'warming up';
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return 'warming up';
   return `${fmtInt(Math.round(number))} tok/hr`;
@@ -1622,7 +1624,7 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
             ${renderQuickStat('Avg context', fmtPct(overview.avgContextPct), `Max ${fmtPct(overview.maxContextPct)}`)}
             ${renderQuickStat('Burn rate', formatRate(overview.burnRate), `Sampled from ${fmtInt(sampleCount)} dashboard snapshots`)}
             ${renderQuickStat('Supervisor share', fmtPct(overview.supervisorTokensPct), 'Main-session token share')}
-            ${renderQuickStat('Tokens live', fmtInt(overview.totalTokensCurrent), Number.isFinite(Number(overview.totalTokensToday)) ? `Today +${fmtInt(overview.totalTokensToday)}` : 'Today delta warming up')}
+            ${renderQuickStat('Tokens live', fmtInt(overview.totalTokensCurrent), overview.totalTokensToday === null || overview.totalTokensToday === undefined ? 'Today delta warming up' : `Today +${fmtInt(overview.totalTokensToday)}`)}
             ${renderQuickStat('Work files', fmtInt(overview.workProductFiles), 'Modified or untracked work-product files')}
           </div>
           <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)} · Token metrics are sampled from live session totals rather than billing logs.</div>

@@ -140,24 +140,28 @@ function median(values) {
 }
 
 function formatInt(value) {
+  if (value === null || value === undefined || value === '') return 'warming up';
   const number = Number(value);
   if (!Number.isFinite(number)) return 'warming up';
   return Math.round(number).toLocaleString();
 }
 
 function formatPct(value, digits = 1) {
+  if (value === null || value === undefined || value === '') return 'warming up';
   const number = Number(value);
   if (!Number.isFinite(number)) return 'warming up';
   return `${number.toFixed(digits)}%`;
 }
 
 function formatRate(value, unit = 'tok/hr') {
+  if (value === null || value === undefined || value === '') return 'warming up';
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return 'warming up';
   return `${formatInt(number)} ${unit}`;
 }
 
 function formatTokenCount(value, unit = 'tok') {
+  if (value === null || value === undefined || value === '') return 'warming up';
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) return 'warming up';
   return `${formatInt(number)} ${unit}`;
@@ -996,10 +1000,11 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     pollReviews: pollTriggeredCount,
   };
   const snapshots = maybeRecordDashboardSnapshot(projectRoot, currentSnapshot, snapshotsState.entries);
-  const firstSnapshotToday = snapshots.find((entry) => {
+  const todaySnapshots = snapshots.filter((entry) => {
     const stamp = parseTimestamp(entry.createdAt);
     return stamp && stamp >= startOfDay;
-  }) || null;
+  });
+  const firstSnapshotToday = todaySnapshots[0] || null;
   const sixHourCutoffMs = now.getTime() - (BURN_RATE_WINDOW_HOURS * 60 * 60 * 1000);
   const burnWindow = snapshots.filter((entry) => {
     const stamp = parseTimestamp(entry.createdAt);
@@ -1014,7 +1019,7 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       burnRate = (Number(burnEnd.totalTokens) - Number(burnStart.totalTokens)) / elapsedHours;
     }
   }
-  const tokensToday = firstSnapshotToday
+  const tokensToday = todaySnapshots.length >= 2 && firstSnapshotToday
     ? Math.max(0, Math.round(totalTokensCurrent - Number(firstSnapshotToday.totalTokens || 0)))
     : null;
 
