@@ -20,6 +20,7 @@ const PROJECT_STATUS_FILE_NAME = 'PROJECT_STATUS.md';
 const DASHBOARD_SNAPSHOT_HISTORY_LIMIT = 720;
 const DASHBOARD_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 const BURN_RATE_WINDOW_HOURS = 6;
+const BURN_RATE_IDLE_MINUTES = 15;
 const HIGH_CONTEXT_ALERT_PCT = 80;
 const HIGH_SUPERVISOR_SHARE_PCT = 45;
 const PUSH_DEGRADED_PCT = 50;
@@ -1020,6 +1021,27 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       burnRate = (Number(burnEnd.totalTokens) - Number(burnStart.totalTokens)) / elapsedHours;
     }
   }
+  let flatSinceMs = null;
+  if (snapshots.length >= 2) {
+    const latestSnapshot = snapshots[snapshots.length - 1];
+    const latestTotalTokens = Number(latestSnapshot.totalTokens);
+    if (Number.isFinite(latestTotalTokens)) {
+      for (let index = snapshots.length - 1; index >= 0; index -= 1) {
+        const candidate = snapshots[index];
+        if (Number(candidate.totalTokens) !== latestTotalTokens) break;
+        const stampMs = parseTimestamp(candidate.createdAt)?.getTime();
+        if (Number.isFinite(stampMs)) {
+          flatSinceMs = stampMs;
+        }
+      }
+    }
+  }
+  if (Number.isFinite(flatSinceMs)) {
+    const idleMinutes = (now.getTime() - flatSinceMs) / 60000;
+    if (idleMinutes >= BURN_RATE_IDLE_MINUTES) {
+      burnRate = 0;
+    }
+  }
   const tokensToday = todaySnapshots.length >= 2 && firstSnapshotToday
     ? Math.max(0, Math.round(totalTokensCurrent - Number(firstSnapshotToday.totalTokens || 0)))
     : null;
@@ -1137,8 +1159,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
             id: 'burn-rate',
             label: 'Burn rate',
             value: formatRate(burnRate),
-            secondary: `Rolling ${BURN_RATE_WINDOW_HOURS}h window · ${snapshots.length} samples`,
-            definition: 'How fast live session tokens are growing. Useful for spotting runaway orchestration or idle-but-chatty agents.',
+            secondary: `Rolling ${BURN_RATE_WINDOW_HOURS}h window · zeros after ${BURN_RATE_IDLE_MINUTES}m flat · ${snapshots.length} samples`,
+            definition: 'How fast live session tokens are growing. If totals stay flat for a while, the metric is forced to zero so completed or idle projects do not look active.',
             formula: '(latest sampled total tokens - earliest sampled total tokens in the rolling window) / elapsed hours',
             tone: Number.isFinite(Number(burnRate)) && burnRate > 12000 ? 'warning' : 'info',
           }),
