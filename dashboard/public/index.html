@@ -477,6 +477,7 @@
 
   .lane-grid {
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    align-items: start;
   }
 
   .lane-card {
@@ -486,6 +487,7 @@
     border: 1px solid rgba(145, 160, 179, 0.12);
     display: grid;
     gap: 10px;
+    min-width: 0;
   }
 
   .lane-card__top {
@@ -493,16 +495,26 @@
     align-items: start;
     justify-content: space-between;
     gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .lane-card__top > div {
+    min-width: 0;
+    flex: 1 1 220px;
   }
 
   .lane-card h3 {
     font-size: 15px;
     font-weight: 700;
+    overflow-wrap: anywhere;
   }
 
   .lane-card__summary {
     color: #d7e0ea;
     font-size: 13px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .lane-card__decision {
@@ -510,6 +522,17 @@
     border-top: 1px solid rgba(145, 160, 179, 0.12);
     display: grid;
     gap: 4px;
+    min-width: 0;
+  }
+
+  .lane-card__meta {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .lane-card .status-badge {
+    flex: 0 0 auto;
   }
 
   .feedback-grid {
