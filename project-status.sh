@@ -39,9 +39,10 @@ PROGRESS_CRON_NAME="${PROJECT_SLUG}-supervisor-progress-check"
 OPENCLAW_CRON_JSON="$(openclaw --profile "${PROJECT_PROFILE}" cron list --all --json 2>/dev/null || printf '{"jobs":[]}\n')"
 
 OUTPUT="$(
-OPENCLAW_CRON_JSON="${OPENCLAW_CRON_JSON}" python3 - "${PROJECT_ROOT}" "${SCOPE_FILE}" "${PROGRESS_CRON_NAME}" "${PROJECT_PROFILE}" "${PROJECT_SLUG}" <<'PY'
+OPENCLAW_CRON_JSON="${OPENCLAW_CRON_JSON}" python3 - "${PROJECT_ROOT}" "${SCOPE_FILE}" "${PROGRESS_CRON_NAME}" "${PROJECT_PROFILE}" "${PROJECT_SLUG}" "${SCRIPT_DIR}" <<'PY'
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -56,22 +57,20 @@ scope_file = Path(sys.argv[2])
 progress_cron_name = sys.argv[3]
 project_profile = sys.argv[4]
 project_slug = sys.argv[5]
+script_dir = Path(sys.argv[6])
 
 scope = yaml.safe_load(scope_file.read_text(encoding="utf-8")) or {}
 agents = scope.get("agents") or []
 cron_payload = json.loads(os.environ.get("OPENCLAW_CRON_JSON") or '{"jobs":[]}')
 
-
-def parse_status_fields(path: Path) -> dict[str, str]:
-    if not path.is_file():
-        return {}
-    fields: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if ": " not in line:
-            continue
-        key, value = line.split(": ", 1)
-        fields[key.strip().lower()] = value.strip()
-    return fields
+state_lib_spec = importlib.util.spec_from_file_location(
+    "fleetclaw_state",
+    script_dir / "bin" / "fleetclaw-state.py",
+)
+if state_lib_spec is None or state_lib_spec.loader is None:
+    raise RuntimeError("Unable to load FleetClaw state library")
+state_lib = importlib.util.module_from_spec(state_lib_spec)
+state_lib_spec.loader.exec_module(state_lib)
 
 
 def format_list(values: list[str], total: int) -> str:
@@ -82,23 +81,6 @@ def format_list(values: list[str], total: int) -> str:
 def normalize_field(value: str) -> str:
     cleaned = " ".join(value.strip().split())
     return cleaned if cleaned else "none"
-
-
-def update_status_field(agent_id: str, key: str, value: str) -> None:
-    status_path = project_root / ".fleetclaw" / "agents" / agent_id / "STATUS.md"
-    lines = status_path.read_text(encoding="utf-8").splitlines() if status_path.exists() else []
-    normalized_key = key.strip().lower()
-    for index, line in enumerate(lines):
-        if ":" not in line:
-            continue
-        field = line.split(":", 1)[0].strip().lower()
-        if field == normalized_key:
-            lines[index] = f"{key}: {value}"
-            break
-    else:
-        lines.append(f"{key}: {value}")
-    status_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
 
 def build_status_signature(state: str, needs_decision: str, blocker: str) -> str:
     return "|".join(
@@ -152,13 +134,19 @@ for agent in agents:
     agent_id = str(agent.get("id") or "").strip()
     if not agent_id:
         continue
-    status_fields = parse_status_fields(project_root / ".fleetclaw" / "agents" / agent_id / "STATUS.md")
+    agent_dir = project_root / ".fleetclaw" / "agents" / agent_id
+    status_fields = state_lib.sync_markdown_and_json(
+        agent_dir / "STATUS.md",
+        agent_dir / "state.json",
+        "# STATUS.md",
+        state_lib.AGENT_PREFERRED_ORDER,
+    )
     state = status_fields.get("state", "").strip().lower()
-    needs_decision = status_fields.get("needs supervisor decision", "").strip().lower()
+    needs_decision = status_fields.get("needs_supervisor_decision", "").strip().lower()
     blocker = status_fields.get("blocker", "").strip().lower()
-    supervisor_notified = status_fields.get("supervisor notified", "").strip().lower()
-    supervisor_notified_signature = status_fields.get("supervisor notified signature", "").strip().lower()
-    last_observed_signature = status_fields.get("last observed signature", "").strip().lower()
+    supervisor_notified = status_fields.get("supervisor_notified", "").strip().lower()
+    supervisor_notified_signature = status_fields.get("supervisor_notified_signature", "").strip().lower()
+    last_observed_signature = status_fields.get("last_observed_signature", "").strip().lower()
 
     is_blocked = state == "blocked" or (blocker not in {"", "none"})
     is_done = state == "done"
@@ -185,14 +173,21 @@ for agent in agents:
 
     if should_notify:
         notified = notify_supervisor(agent_id, state, needs_decision, blocker)
-        update_status_field(agent_id, "supervisor notified", "yes" if notified else "no")
+        status_fields["supervisor_notified"] = "yes" if notified else "no"
         if notified:
-            update_status_field(agent_id, "supervisor notified signature", status_signature)
+            status_fields["supervisor_notified_signature"] = status_signature
     elif not (is_blocked or is_pending_review) and supervisor_notified == "yes":
-        update_status_field(agent_id, "supervisor notified", "no")
-        update_status_field(agent_id, "supervisor notified signature", status_signature)
+        status_fields["supervisor_notified"] = "no"
+        status_fields["supervisor_notified_signature"] = status_signature
 
-    update_status_field(agent_id, "last observed signature", status_signature)
+    status_fields["last_observed_signature"] = status_signature
+    state_lib.sync_markdown_and_json(
+        agent_dir / "STATUS.md",
+        agent_dir / "state.json",
+        "# STATUS.md",
+        state_lib.AGENT_PREFERRED_ORDER,
+        status_fields,
+    )
 
 total_agents = len([agent for agent in agents if str(agent.get("id") or "").strip()])
 
@@ -260,29 +255,27 @@ if unknown_ids:
     summary += f" Unknown lane state: {', '.join(unknown_ids)}."
 
 timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-status_path = project_root / ".fleetclaw" / "PROJECT_STATUS.md"
-status_path.parent.mkdir(parents=True, exist_ok=True)
-status_path.write_text(
-    "\n".join(
-        [
-            "# PROJECT_STATUS.md",
-            f"State: {overall_state}",
-            f"Supervisor progress cron: {progress_cron}",
-            f"Supervisor progress reason: {progress_reason}",
-            f"Lanes done: {format_list(done_ids, total_agents)}",
-            f"Lanes active: {format_list(active_ids, total_agents)}",
-            f"Lanes blocked: {format_list(blocked_ids, total_agents)}",
-            f"Lanes pending review: {format_list(pending_review_ids, total_agents)}",
-            f"Summary: {summary}",
-            f"Completed work: {completed_work}",
-            f"Where to review: {review_url}",
-            f"Review command: {review_command}",
-            f"Next action: {next_action}",
-            f"Last updated: {timestamp}",
-            "",
-        ]
-    ),
-    encoding="utf-8",
+fleetclaw_dir = project_root / ".fleetclaw"
+state_lib.sync_markdown_and_json(
+    fleetclaw_dir / "PROJECT_STATUS.md",
+    fleetclaw_dir / "project-state.json",
+    "# PROJECT_STATUS.md",
+    state_lib.PROJECT_PREFERRED_ORDER,
+    {
+        "state": overall_state,
+        "supervisor_progress_cron": progress_cron,
+        "supervisor_progress_reason": progress_reason,
+        "lanes_done": format_list(done_ids, total_agents),
+        "lanes_active": format_list(active_ids, total_agents),
+        "lanes_blocked": format_list(blocked_ids, total_agents),
+        "lanes_pending_review": format_list(pending_review_ids, total_agents),
+        "summary": summary,
+        "completed_work": completed_work,
+        "where_to_review": review_url,
+        "review_command": review_command,
+        "next_action": next_action,
+        "last_updated": timestamp,
+    },
 )
 
 print(summary)

@@ -46,21 +46,29 @@ fleetclaw_status_get_field() {
     python3 - "$1" "$2" <<'PY'
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import sys
 
 status_path = pathlib.Path(sys.argv[1])
 label = sys.argv[2].strip().lower()
-if not status_path.exists():
-    raise SystemExit(0)
+json_path = status_path.with_name("state.json")
+lib_path = status_path.parents[2] / "bin" / "fleetclaw-state.py"
 
-for line in status_path.read_text(encoding="utf-8").splitlines():
-    if ": " not in line:
-        continue
-    key, value = line.split(": ", 1)
-    if key.strip().lower() == label:
-        print(value.strip())
-        break
+spec = importlib.util.spec_from_file_location("fleetclaw_state", lib_path)
+if spec is None or spec.loader is None:
+    raise SystemExit(0)
+state_lib = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(state_lib)
+state = state_lib.sync_markdown_and_json(
+    status_path,
+    json_path,
+    "# STATUS.md",
+    state_lib.AGENT_PREFERRED_ORDER,
+)
+value = state.get(state_lib.normalize_key(label), "")
+if value:
+    print(value)
 PY
 }
 
@@ -68,29 +76,28 @@ fleetclaw_status_set_field() {
     python3 - "$1" "$2" "$3" <<'PY'
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import sys
 
 status_path = pathlib.Path(sys.argv[1])
 label = sys.argv[2]
 value = sys.argv[3]
-prefix = f"{label}:"
-replacement = f"{label}: {value}"
+json_path = status_path.with_name("state.json")
+lib_path = status_path.parents[2] / "bin" / "fleetclaw-state.py"
 
-if status_path.exists():
-    lines = status_path.read_text(encoding="utf-8").splitlines()
-else:
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["# STATUS.md"]
-
-for index, line in enumerate(lines):
-    if line.startswith(prefix):
-        lines[index] = replacement
-        break
-else:
-    lines.append(replacement)
-
-status_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+spec = importlib.util.spec_from_file_location("fleetclaw_state", lib_path)
+if spec is None or spec.loader is None:
+    raise SystemExit(1)
+state_lib = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(state_lib)
+state_lib.sync_markdown_and_json(
+    status_path,
+    json_path,
+    "# STATUS.md",
+    state_lib.AGENT_PREFERRED_ORDER,
+    {label: value},
+)
 PY
 }
 

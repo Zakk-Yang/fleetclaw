@@ -96,8 +96,6 @@ For a full runtime-state wipe without deleting your project files:
 - The dashboard also shows compact control-plane traffic so you can inspect recent agent notifications and supervisor decisions
 - The dashboard also includes a human feedback form that routes review notes into the supervisor loop by default and keeps a recent submission trail
 - FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
-- The runtime settings dashboard now edits supervisor/agent models, cadences, and thinking levels through `/api/runtime-settings`; applying changes reruns `setup.sh`/cron so the next turn picks up the new config without further manual steps.
-- `project-status.sh` now detects `needs supervisor decision: yes`, sends a one-off message to the supervisor session, and tracks a `supervisor notified` flag so a lane doesn’t wait for the next cron tick before getting reviewed.
 - FleetClaw writes `.fleetclaw/PROJECT_STATUS.md` with an overall fleet summary and automatically idles the supervisor progress cron when every coding lane is done
 
 ## Authoring Model
@@ -126,13 +124,15 @@ your-project/
     launch.sh             # Start the fleet
     dashboard/            # Local monitoring UI
   .fleetclaw/             # Generated at setup (gitignored)
-    PROJECT_STATUS.md     # Overall fleet summary + review guidance
+    PROJECT_STATUS.md     # Rendered fleet summary + review guidance
+    project-state.json    # Machine-readable fleet state source of truth
     bin/                  # Compact notification helpers
     agents/
       <agent-id>/         # Per-agent config files
         SOUL.md           # Agent personality & workflow
         BRIEF.md          # Task assignment
-        STATUS.md         # Live checkpoint (agent updates this)
+        STATUS.md         # Rendered live checkpoint
+        state.json        # Machine-readable lane state source of truth
         PLAN.md           # Agent's implementation plan
         MEMORY.md         # Durable decisions & lessons
         memory/           # Daily logs
@@ -141,10 +141,11 @@ your-project/
 
 ## Agent Coordination
 
-- **STATUS.md** is the checkpoint contract between agent and supervisor
-- Agents update STATUS.md after each logical unit of work
+- **`state.json`** is the machine-readable checkpoint contract between agent and supervisor
+- **`STATUS.md`** is the rendered human-readable mirror of that state
+- FleetClaw imports markdown updates for compatibility, normalizes them into JSON, and rewrites the markdown view
 - Agents notify the supervisor with compact `EVENT_ID`-backed messages via `.fleetclaw/bin/notify-supervisor.sh`
-- Supervisor reads STATUS.md + git diff to make decisions
+- Supervisor reads normalized lane state + git diff to make decisions
 - Supervisor replies with compact decisions via `.fleetclaw/bin/send-supervisor-decision.sh`
 - Decisions: `CONTINUE`, `REDIRECT`, `STOP`, `ACCEPT_DONE`, `ESCALATE`
 - Polling remains the fallback while notification delivery is being proven
@@ -160,6 +161,7 @@ your-project/
 | `check-markdown-budget.sh` | Estimate the Markdown read-set load for supervisor/agents as a % of the context window |
 | `check-context.sh` | Show live session token usage and context pressure from OpenClaw |
 | `project-status.sh` | Write `.fleetclaw/PROJECT_STATUS.md` with overall fleet state, review surface, and next action |
+| `bin/fleetclaw-state.py` | Normalize lane/project state into JSON and render markdown mirrors |
 | `reconcile-status.sh` | Reconcile stale agent checkpoints from recorded supervisor decisions |
 | `reconcile-loop.sh` | Background loop that runs `reconcile-status.sh` automatically after launch |
 | `review-runtime-settings.sh` | Inspect heartbeat, compaction, retention, and cron settings for the dedicated profile |

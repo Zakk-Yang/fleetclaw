@@ -37,9 +37,10 @@ OPENCLAW_PROFILE="$(resolve_openclaw_profile_from_scope "${SCOPE_FILE}" "${PROJE
 PROFILE_ROOT="${HOME}/.openclaw-${OPENCLAW_PROFILE}"
 
 OUTPUT="$(
-python3 - "${PROJECT_ROOT}" "${PROFILE_ROOT}" "${PROJECT_SLUG}" "${SCOPE_FILE}" <<'PY'
+python3 - "${PROJECT_ROOT}" "${PROFILE_ROOT}" "${PROJECT_SLUG}" "${SCOPE_FILE}" "${SCRIPT_DIR}" <<'PY'
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import sys
@@ -52,11 +53,21 @@ project_root = Path(sys.argv[1])
 profile_root = Path(sys.argv[2])
 project_slug = sys.argv[3]
 scope_file = Path(sys.argv[4])
+script_dir = Path(sys.argv[5])
 
 scope = yaml.safe_load(scope_file.read_text(encoding="utf-8")) or {}
 agents = scope.get("agents") or []
 supervisor_runtime_id = f"{project_slug}-supervisor"
 decision_pattern = re.compile(r"SUPERVISOR_DECISION:\s*([A-Z_]+)")
+
+state_lib_spec = importlib.util.spec_from_file_location(
+    "fleetclaw_state",
+    script_dir / "bin" / "fleetclaw-state.py",
+)
+if state_lib_spec is None or state_lib_spec.loader is None:
+    raise RuntimeError("Unable to load FleetClaw state library")
+state_lib = importlib.util.module_from_spec(state_lib_spec)
+state_lib_spec.loader.exec_module(state_lib)
 
 
 def parse_dt(value: object) -> datetime | None:
@@ -81,27 +92,6 @@ def parse_dt(value: object) -> datetime | None:
     if parsed.tzinfo is not None:
         return parsed.astimezone().replace(tzinfo=None)
     return parsed
-
-
-def extract_status_fields(lines: list[str]) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    for line in lines:
-        if ": " not in line:
-            continue
-        key, value = line.split(": ", 1)
-        fields[key] = value
-    return fields
-
-
-def set_field(lines: list[str], label: str, value: str) -> None:
-    prefix = f"{label}:"
-    replacement = f"{label}: {value}"
-    for index, line in enumerate(lines):
-        if line.startswith(prefix):
-            lines[index] = replacement
-            return
-    lines.append(replacement)
-
 
 def latest_supervisor_decision(runtime_agent_id: str) -> tuple[str, datetime] | None:
     session_dir = profile_root / "agents" / runtime_agent_id / "sessions"
@@ -195,15 +185,20 @@ for agent in agents:
     decision_name, decision_time = decision
     agent_dir = project_root / ".fleetclaw" / "agents" / agent_id
     status_path = agent_dir / "STATUS.md"
-    if not status_path.is_file():
+    json_path = agent_dir / "state.json"
+    if not status_path.is_file() and not json_path.is_file():
         continue
 
-    lines = status_path.read_text(encoding="utf-8").splitlines()
-    fields = extract_status_fields(lines)
-    state = fields.get("State", "").strip().lower()
-    needs_decision = fields.get("Needs supervisor decision", "").strip().lower()
-    requested_decision = fields.get("Requested decision", "").strip().lower()
-    last_updated = parse_dt(fields.get("Last updated"))
+    fields = state_lib.sync_markdown_and_json(
+        status_path,
+        json_path,
+        "# STATUS.md",
+        state_lib.AGENT_PREFERRED_ORDER,
+    )
+    state = fields.get("state", "").strip().lower()
+    needs_decision = fields.get("needs_supervisor_decision", "").strip().lower()
+    requested_decision = fields.get("requested_decision", "").strip().lower()
+    last_updated = parse_dt(fields.get("last_updated"))
 
     should_normalize = False
     if state != "done" or needs_decision != "no" or requested_decision != "none":
@@ -213,12 +208,18 @@ for agent in agents:
     if not should_normalize:
         continue
 
-    set_field(lines, "State", "done")
-    set_field(lines, "Needs supervisor decision", "no")
-    set_field(lines, "Requested decision", "none")
-    set_field(lines, "Next step", "Wait for follow-up requests or reopened work.")
-    set_field(lines, "Last updated", now_stamp)
-    status_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    fields["state"] = "done"
+    fields["needs_supervisor_decision"] = "no"
+    fields["requested_decision"] = "none"
+    fields["next_step"] = "Wait for follow-up requests or reopened work."
+    fields["last_updated"] = now_stamp
+    state_lib.sync_markdown_and_json(
+        status_path,
+        json_path,
+        "# STATUS.md",
+        state_lib.AGENT_PREFERRED_ORDER,
+        fields,
+    )
 
     memory_note = (
         f"- {time_label} FleetClaw reconciled `STATUS.md` to `done` after "
