@@ -133,7 +133,24 @@ SESSION_KEY="agent:${FLEETCLAW_SUPERVISOR_RUNTIME_ID}:main"
 RUNTIME_ID="${FLEETCLAW_PROJECT_SLUG}-${AGENT_ID}"
 CREATED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-if SEND_OUTPUT="$(fleetclaw_send_gateway_chat "${SESSION_KEY}" "${MESSAGE}" "${EVENT_ID}" 2>&1)"; then
+MAX_RETRIES="${FLEETCLAW_NOTIFY_RETRIES:-2}"
+RETRY_DELAY=2
+SEND_OUTPUT=""
+SEND_OK=false
+
+for (( attempt = 0; attempt <= MAX_RETRIES; attempt++ )); do
+    if (( attempt > 0 )); then
+        printf 'Retry %d/%d after %ds...\n' "${attempt}" "${MAX_RETRIES}" "${RETRY_DELAY}" >&2
+        sleep "${RETRY_DELAY}"
+        RETRY_DELAY=$(( RETRY_DELAY * 2 ))
+    fi
+    if SEND_OUTPUT="$(fleetclaw_send_gateway_chat "${SESSION_KEY}" "${MESSAGE}" "${EVENT_ID}" 2>&1)"; then
+        SEND_OK=true
+        break
+    fi
+done
+
+if "${SEND_OK}"; then
     ENTRY_JSON="$(python3 - "${CREATED_AT}" "${EVENT_ID}" "${EVENT_TYPE}" "${AGENT_ID}" "${RUNTIME_ID}" "${FLEETCLAW_SUPERVISOR_RUNTIME_ID}" "${STATE}" "${REQUEST}" "${SUMMARY}" "${BLOCKER}" "${SEND_OUTPUT}" <<'PY'
 from __future__ import annotations
 

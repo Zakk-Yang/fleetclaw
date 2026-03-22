@@ -9,23 +9,51 @@ const SCRIPT_DIR = path.resolve(__dirname, '..');
 const SCOPE_FILE = path.join(SCRIPT_DIR, 'project-scope.yaml');
 const PORT = parseInt(process.env.PORT || '3333', 10);
 const HOST = process.env.HOST || '127.0.0.1';
+// --- Tuning constants -----------------------------------------------------------
+// Cache TTL for the full dashboard payload (prevents shell-out thrashing on rapid refreshes).
 const CACHE_TTL_MS = 3000;
-const GENERATED_DIR = path.join(SCRIPT_DIR, 'generated');
-const FEEDBACK_LOG_FILE = path.join(GENERATED_DIR, 'human-feedback.jsonl');
+// Maximum human-feedback entries returned to the UI.
 const FEEDBACK_HISTORY_LIMIT = 12;
+// Recent control-plane messages shown in the "Control plane" panel.
 const CONTROL_PLANE_HISTORY_LIMIT = 20;
+// Control-plane entries loaded for analytics (push-vs-poll, latency, etc.).
 const CONTROL_PLANE_ANALYTICS_LIMIT = 500;
-const DASHBOARD_SNAPSHOT_FILE_NAME = 'dashboard-metrics.jsonl';
-const PROJECT_STATUS_FILE_NAME = 'PROJECT_STATUS.md';
+// Snapshot sampling interval — one row per minute → 720 rows = 12 hours of history.
 const DASHBOARD_SNAPSHOT_HISTORY_LIMIT = 720;
 const DASHBOARD_SNAPSHOT_INTERVAL_MS = 60 * 1000;
-const HIGH_CONTEXT_ALERT_PCT = 80;
-const HIGH_SUPERVISOR_SHARE_PCT = 45;
-const PUSH_DEGRADED_PCT = 50;
-const STALE_ACCEPT_MINUTES = 120;
-const BLOCKED_LANE_ALERT_MINUTES = 20;
+// Alert thresholds — tripped values surface in the "Project health" panel.
+const HIGH_CONTEXT_ALERT_PCT = 80;        // main-session context above this → "High context" alert
+const HIGH_SUPERVISOR_SHARE_PCT = 45;     // supervisor share of main tokens → "High coordination overhead"
+const PUSH_DEGRADED_PCT = 50;             // push-triggered reviews below this → "Push degraded"
+const STALE_ACCEPT_MINUTES = 120;         // minutes without an ACCEPT_DONE → "Stale work landing"
+const BLOCKED_LANE_ALERT_MINUTES = 20;    // blocked lane age → "Blocked lane" alert
+// Maximum size (bytes) for JSONL log files before rotation kicks in (~5 MB).
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+// Number of rotated log archives to keep (e.g. control-plane.1.jsonl … control-plane.3.jsonl).
+const LOG_ROTATE_KEEP = 3;
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
+// --- Agent state constants ------------------------------------------------------
+const AGENT_STATES = Object.freeze({
+  WORKING: 'working',
+  BLOCKED: 'blocked',
+  DONE: 'done',
+  READY_FOR_REVIEW: 'ready-for-review',
+  MONITORING: 'monitoring',
+});
+const SUPERVISOR_DECISIONS = Object.freeze({
+  CONTINUE: 'CONTINUE',
+  REDIRECT: 'REDIRECT',
+  STOP: 'STOP',
+  ACCEPT_DONE: 'ACCEPT_DONE',
+  ESCALATE: 'ESCALATE',
+});
+
+// --- Derived paths ---------------------------------------------------------------
+const GENERATED_DIR = path.join(SCRIPT_DIR, 'generated');
+const FEEDBACK_LOG_FILE = path.join(GENERATED_DIR, 'human-feedback.jsonl');
+const DASHBOARD_SNAPSHOT_FILE_NAME = 'dashboard-metrics.jsonl';
+const PROJECT_STATUS_FILE_NAME = 'PROJECT_STATUS.md';
 let cachedPayload = null;
 let cachedAt = 0;
 
@@ -98,7 +126,10 @@ function invalidateDashboardCache() {
 function readMdFile(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf8');
-  } catch {
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.error(`[readMdFile] unexpected error reading ${filePath}: ${err.message}`);
+    }
     return null;
   }
 }
@@ -284,7 +315,8 @@ function resolveWorkProductFiles(git) {
 function execText(command, options = {}) {
   try {
     return execSync(command, { encoding: 'utf8', timeout: 5000, ...options }).trim();
-  } catch {
+  } catch (err) {
+    console.error(`[execText] command failed: ${command}: ${err.message}`);
     return '';
   }
 }
@@ -292,7 +324,8 @@ function execText(command, options = {}) {
 function execRawText(command, options = {}) {
   try {
     return execSync(command, { encoding: 'utf8', timeout: 5000, ...options });
-  } catch {
+  } catch (err) {
+    console.error(`[execRawText] command failed: ${command}: ${err.message}`);
     return '';
   }
 }
@@ -300,7 +333,8 @@ function execRawText(command, options = {}) {
 function execFileText(command, args, options = {}) {
   try {
     return execFileSync(command, args, { encoding: 'utf8', timeout: 5000, ...options }).trim();
-  } catch {
+  } catch (err) {
+    console.error(`[execFileText] command failed: ${command} ${args.join(' ')}: ${err.message}`);
     return '';
   }
 }
@@ -310,7 +344,8 @@ function execFileJson(command, args, options = {}) {
   if (!raw) return null;
   try {
     return JSON.parse(raw);
-  } catch {
+  } catch (err) {
+    console.error(`[execFileJson] JSON parse failed for ${command} ${args.join(' ')}: ${err.message}`);
     return null;
   }
 }
@@ -324,7 +359,7 @@ function formatExecError(error) {
 function getFileMtime(filePath) {
   try {
     return fs.statSync(filePath).mtime.toISOString();
-  } catch {
+  } catch { /* file may not exist */
     return null;
   }
 }
@@ -628,6 +663,24 @@ function ensureParentDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function rotateLogFile(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < LOG_MAX_BYTES) return;
+  } catch {
+    return;
+  }
+  for (let i = LOG_ROTATE_KEEP; i >= 1; i--) {
+    const src = i === 1 ? filePath : `${filePath}.${i - 1}`;
+    const dst = `${filePath}.${i}`;
+    try {
+      if (fs.existsSync(src)) fs.renameSync(src, dst);
+    } catch (err) {
+      console.error(`[log-rotate] failed to rename ${src} -> ${dst}: ${err.message}`);
+    }
+  }
+}
+
 function trimString(value, maxLength = 4000) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLength);
@@ -699,6 +752,7 @@ function sendGatewayChatMessage(profile, sessionKey, message, runId) {
 
 function appendFeedbackEntry(entry) {
   ensureParentDir(FEEDBACK_LOG_FILE);
+  rotateLogFile(FEEDBACK_LOG_FILE);
   fs.appendFileSync(FEEDBACK_LOG_FILE, `${JSON.stringify(entry)}\n`, 'utf8');
 }
 
@@ -713,7 +767,7 @@ function loadJsonlEntries(filePath, validator, limit) {
       if (validator(parsed)) {
         rows.push(parsed);
       }
-    } catch {}
+    } catch { /* malformed JSONL line — skip */ }
   }
 
   rows.sort((left, right) => {
@@ -773,6 +827,7 @@ function loadDashboardSnapshots(projectRoot, limit = DASHBOARD_SNAPSHOT_HISTORY_
 function appendDashboardSnapshot(projectRoot, entry) {
   const logFile = resolveDashboardSnapshotLogFile(projectRoot);
   ensureParentDir(logFile);
+  rotateLogFile(logFile);
   fs.appendFileSync(logFile, `${JSON.stringify(entry)}\n`, 'utf8');
 }
 
@@ -1115,15 +1170,15 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
 
   const activeAgents = agents.filter((agent) => {
     const state = String(agent.statusFields?.state || '').toLowerCase();
-    return state === 'working' || state.includes('review');
+    return state === AGENT_STATES.WORKING || state.includes('review');
   }).length;
   const blockedAgents = agents.filter((agent) => {
     const state = String(agent.statusFields?.state || '').toLowerCase();
     const blocker = String(agent.statusFields?.blocker || '').toLowerCase();
-    return state === 'blocked' || (blocker && blocker !== 'none');
+    return state === AGENT_STATES.BLOCKED || (blocker && blocker !== 'none');
   });
   const pendingAgents = agents.filter((agent) => String(agent.statusFields?.['needs supervisor decision'] || '').toLowerCase() === 'yes');
-  const allLanesDone = agents.length > 0 && agents.every((agent) => String(agent.statusFields?.state || '').toLowerCase() === 'done');
+  const allLanesDone = agents.length > 0 && agents.every((agent) => String(agent.statusFields?.state || '').toLowerCase() === AGENT_STATES.DONE);
 
   const notifications = dedupeControlPlaneEntries(controlPlaneEntries, 'agent_to_supervisor');
   const decisions = dedupeControlPlaneEntries(controlPlaneEntries, 'supervisor_to_agent');
@@ -1173,7 +1228,7 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
 
   const acceptedDecisionIdsToday = uniqueSorted(
     decisionsToday
-      .filter((entry) => entry.decision === 'ACCEPT_DONE')
+      .filter((entry) => entry.decision === SUPERVISOR_DECISIONS.ACCEPT_DONE)
       .map((entry) => `${entry.agentId}:${entry.eventId}`),
   );
   const acceptedTasksToday = acceptedDecisionIdsToday.length;
@@ -1256,7 +1311,7 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     : null;
 
   const latestAcceptedDecision = decisions
-    .filter((entry) => entry.decision === 'ACCEPT_DONE')
+    .filter((entry) => entry.decision === SUPERVISOR_DECISIONS.ACCEPT_DONE)
     .map((entry) => ({ entry, stamp: parseTimestamp(entry.createdAt) }))
     .filter((item) => item.stamp)
     .sort((left, right) => right.stamp.getTime() - left.stamp.getTime())[0] || null;
@@ -1274,7 +1329,7 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   if (allLanesDone) {
     const completionCandidates = [
       ...agents
-        .filter((agent) => String(agent.statusFields?.state || '').toLowerCase() === 'done')
+        .filter((agent) => String(agent.statusFields?.state || '').toLowerCase() === AGENT_STATES.DONE)
         .map((agent) => parseTimestamp(agent.statusFields?.['last updated'])),
       latestAcceptedDecision?.stamp || null,
     ].filter(Boolean);
@@ -1735,7 +1790,7 @@ function resolveContextLimit(profile, sessions) {
       const parsed = JSON.parse(raw);
       const limit = Number(parsed);
       if (Number.isFinite(limit) && limit > 0) return limit;
-    } catch {}
+    } catch { /* config value not valid JSON — fall through */ }
   }
 
   const modelContextLimit = resolveModelContextLimit(profile);

@@ -124,8 +124,43 @@ PY
     openclaw --profile "${FLEETCLAW_OPENCLAW_PROFILE}" gateway call chat.send --json --params "${params}"
 }
 
+FLEETCLAW_LOG_MAX_BYTES="${FLEETCLAW_LOG_MAX_BYTES:-5242880}"
+FLEETCLAW_LOG_ROTATE_KEEP="${FLEETCLAW_LOG_ROTATE_KEEP:-3}"
+
+fleetclaw_rotate_log() {
+    local log_file="$1"
+    if [[ ! -f "${log_file}" ]]; then
+        return 0
+    fi
+    local size
+    size="$(stat --printf='%s' "${log_file}" 2>/dev/null || stat -f '%z' "${log_file}" 2>/dev/null || echo 0)"
+    if (( size < FLEETCLAW_LOG_MAX_BYTES )); then
+        return 0
+    fi
+    local i
+    for (( i = FLEETCLAW_LOG_ROTATE_KEEP; i >= 1; i-- )); do
+        local src dst
+        if (( i == 1 )); then
+            src="${log_file}"
+        else
+            src="${log_file}.$((i - 1))"
+        fi
+        dst="${log_file}.${i}"
+        if [[ -f "${src}" ]]; then
+            mv "${src}" "${dst}" 2>/dev/null || true
+        fi
+    done
+}
+
 fleetclaw_append_control_plane_log() {
     local entry_json="$1"
-    mkdir -p "$(dirname "${FLEETCLAW_CONTROL_PLANE_LOG}")"
-    printf '%s\n' "${entry_json}" >> "${FLEETCLAW_CONTROL_PLANE_LOG}"
+    local log_dir
+    log_dir="$(dirname "${FLEETCLAW_CONTROL_PLANE_LOG}")"
+    mkdir -p "${log_dir}"
+    local lock_file="${FLEETCLAW_CONTROL_PLANE_LOG}.lock"
+    (
+        flock -w 5 200 2>/dev/null || true
+        fleetclaw_rotate_log "${FLEETCLAW_CONTROL_PLANE_LOG}"
+        printf '%s\n' "${entry_json}" >> "${FLEETCLAW_CONTROL_PLANE_LOG}"
+    ) 200>"${lock_file}"
 }

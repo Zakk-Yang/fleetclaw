@@ -419,6 +419,7 @@ enable_yq_fallback() {
         return 0
     fi
 
+    echo "[fleetclaw] yq not found — using built-in Python/PyYAML fallback" >&2
     FLEETCLAW_USING_YQ_FALLBACK=1
     yq() {
         python3 - "$@" <<'PY'
@@ -429,7 +430,7 @@ import sys
 try:
     import yaml
 except ImportError as exc:
-    raise SystemExit(f"PyYAML is required for the fallback yq implementation: {exc}")
+    raise SystemExit(f"PyYAML is required for the fallback yq implementation.\n  Install: pip install pyyaml\n  Error: {exc}")
 
 args = sys.argv[1:]
 if not args or args[0] != "eval":
@@ -477,7 +478,7 @@ def lookup(node, token):
     if token == ".":
         return node
     if not token.startswith("."):
-        raise KeyError(token)
+        raise KeyError(f"expression must start with '.': got {token!r}")
     token = token[1:]
     if token == "":
         return node
@@ -485,16 +486,20 @@ def lookup(node, token):
     for part in token.split("."):
         match = re.fullmatch(r"([^\[\]]+)(?:\[(\d+)\])?", part)
         if not match:
-            raise KeyError(token)
+            raise KeyError(f"invalid path segment {part!r} in expression .{token}")
         key = match.group(1)
         index = match.group(2)
-        if not isinstance(current, dict) or key not in current:
-            raise KeyError(token)
+        if not isinstance(current, dict):
+            raise KeyError(f"expected mapping at .{part} but got {type(current).__name__}")
+        if key not in current:
+            raise KeyError(f"key {key!r} not found (available: {', '.join(sorted(current)[:8])})")
         current = current[key]
         if index is not None:
             idx = int(index)
-            if not isinstance(current, list) or idx >= len(current):
-                raise KeyError(token)
+            if not isinstance(current, list):
+                raise KeyError(f"expected list at .{part} but got {type(current).__name__}")
+            if idx >= len(current):
+                raise KeyError(f"index [{idx}] out of range (list has {len(current)} items)")
             current = current[idx]
     return current
 
