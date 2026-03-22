@@ -79,6 +79,11 @@ def format_list(values: list[str], total: int) -> str:
     return f"{len(values)}/{total} ({label})"
 
 
+def normalize_field(value: str) -> str:
+    cleaned = " ".join(value.strip().split())
+    return cleaned if cleaned else "none"
+
+
 def update_status_field(agent_id: str, key: str, value: str) -> None:
     status_path = project_root / ".fleetclaw" / "agents" / agent_id / "STATUS.md"
     lines = status_path.read_text(encoding="utf-8").splitlines() if status_path.exists() else []
@@ -95,23 +100,46 @@ def update_status_field(agent_id: str, key: str, value: str) -> None:
     status_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def notify_supervisor(agent_id: str) -> None:
-    message = f"Lane {agent_id} requests supervisor review now."
-    subprocess.run(
+def build_status_signature(state: str, needs_decision: str, blocker: str) -> str:
+    return "|".join(
         [
-            "openclaw",
-            "--profile",
-            project_profile,
-            "agent",
-            "--agent",
-            f"{project_slug}-supervisor",
-            "--message",
-            message,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
+            f"state={normalize_field(state).lower()}",
+            f"needs_decision={normalize_field(needs_decision).lower()}",
+            f"blocker={normalize_field(blocker).lower()}",
+        ]
     )
+
+
+def notify_supervisor(agent_id: str, state: str, needs_decision: str, blocker: str) -> bool:
+    parts = [f"Lane {agent_id} status changed."]
+    normalized_state = normalize_field(state)
+    normalized_needs_decision = normalize_field(needs_decision)
+    normalized_blocker = normalize_field(blocker)
+    parts.append(f"State: {normalized_state}.")
+    parts.append(f"Needs supervisor decision: {normalized_needs_decision}.")
+    if normalized_blocker.lower() != "none":
+        parts.append(f"Blocker: {normalized_blocker}.")
+    message = " ".join(parts)
+    try:
+        subprocess.run(
+            [
+                "openclaw",
+                "--profile",
+                project_profile,
+                "agent",
+                "--agent",
+                f"{project_slug}-supervisor",
+                "--message",
+                message,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15,
+        )
+        return True
+    except subprocess.TimeoutExpired:
+        return False
 
 
 done_ids: list[str] = []
@@ -129,11 +157,14 @@ for agent in agents:
     needs_decision = status_fields.get("needs supervisor decision", "").strip().lower()
     blocker = status_fields.get("blocker", "").strip().lower()
     supervisor_notified = status_fields.get("supervisor notified", "").strip().lower()
+    supervisor_notified_signature = status_fields.get("supervisor notified signature", "").strip().lower()
+    last_observed_signature = status_fields.get("last observed signature", "").strip().lower()
 
     is_blocked = state == "blocked" or (blocker not in {"", "none"})
     is_done = state == "done"
     is_pending_review = needs_decision == "yes" and not is_blocked and not is_done
     is_active = state in {"working", "ready-for-review"} and not is_pending_review
+    status_signature = build_status_signature(state, needs_decision, blocker)
 
     if is_done:
         done_ids.append(agent_id)
@@ -146,11 +177,22 @@ for agent in agents:
     else:
         unknown_ids.append(agent_id)
 
-    if is_pending_review and supervisor_notified != "yes":
-        notify_supervisor(agent_id)
-        update_status_field(agent_id, "supervisor notified", "yes")
-    elif not is_pending_review and supervisor_notified == "yes":
+    should_notify = False
+    if last_observed_signature and last_observed_signature != status_signature:
+        should_notify = True
+    elif (is_blocked or is_pending_review) and supervisor_notified_signature != status_signature:
+        should_notify = True
+
+    if should_notify:
+        notified = notify_supervisor(agent_id, state, needs_decision, blocker)
+        update_status_field(agent_id, "supervisor notified", "yes" if notified else "no")
+        if notified:
+            update_status_field(agent_id, "supervisor notified signature", status_signature)
+    elif not (is_blocked or is_pending_review) and supervisor_notified == "yes":
         update_status_field(agent_id, "supervisor notified", "no")
+        update_status_field(agent_id, "supervisor notified signature", status_signature)
+
+    update_status_field(agent_id, "last observed signature", status_signature)
 
 total_agents = len([agent for agent in agents if str(agent.get("id") or "").strip()])
 
