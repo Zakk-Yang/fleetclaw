@@ -24,6 +24,7 @@ const HIGH_SUPERVISOR_SHARE_PCT = 45;
 const PUSH_DEGRADED_PCT = 50;
 const STALE_ACCEPT_MINUTES = 120;
 const BLOCKED_LANE_ALERT_MINUTES = 20;
+const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
 let cachedPayload = null;
 let cachedAt = 0;
@@ -939,6 +940,15 @@ function normalizeModelSetting(value) {
   return trimString(value, 200);
 }
 
+function normalizeThinkingSetting(value) {
+  const normalized = trimString(value, 50);
+  if (!normalized) return '';
+  if (!THINKING_LEVELS.includes(normalized)) {
+    throw new Error(`Thinking must be one of: ${THINKING_LEVELS.join(', ')}`);
+  }
+  return normalized;
+}
+
 function normalizeFrequencySetting(value) {
   const parsed = Number.parseInt(String(value ?? '').trim(), 10);
   if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1440) return null;
@@ -953,13 +963,16 @@ function resolveRuntimeSettings(scope, profile) {
   return {
     note: 'Model changes are written to project-scope.yaml. Cadence updates reinstall supervisor cron. Restarting the gateway is optional and only needed when you want the next queued turn to pick up the refreshed agent registry immediately.',
     availableModels: loadAvailableModels(profile),
+    availableThinkings: THINKING_LEVELS,
     supervisor: {
       model: scope?.supervisor?.model || '',
       checkIntervalMins: Number(scope?.supervisor?.check_interval_mins || 10),
+      thinking: scope?.supervisor?.thinking || '',
     },
     agents: (scope?.agents || []).map((agent) => ({
       id: String(agent?.id || ''),
       model: agent?.model || '',
+      thinking: agent?.thinking || '',
     })),
     restartGatewaySupported: true,
   };
@@ -968,6 +981,7 @@ function resolveRuntimeSettings(scope, profile) {
 function applyRuntimeSettings(scope, payload) {
   const supervisorModel = normalizeModelSetting(payload?.supervisor?.model ?? scope?.supervisor?.model);
   const checkIntervalMins = normalizeFrequencySetting(payload?.supervisor?.checkIntervalMins ?? scope?.supervisor?.check_interval_mins);
+  const supervisorThinking = normalizeThinkingSetting(payload?.supervisor?.thinking ?? scope?.supervisor?.thinking ?? '');
   if (!supervisorModel) {
     throw new Error('Supervisor model is required.');
   }
@@ -986,18 +1000,22 @@ function applyRuntimeSettings(scope, payload) {
   scope.supervisor = scope.supervisor || {};
   scope.supervisor.model = supervisorModel;
   scope.supervisor.check_interval_mins = checkIntervalMins;
+  scope.supervisor.thinking = supervisorThinking;
 
   for (const agent of scope.agents || []) {
     const incoming = incomingAgents.get(String(agent?.id || ''));
     const nextModel = normalizeModelSetting(incoming?.model ?? agent?.model);
+    const nextThinking = normalizeThinkingSetting(incoming?.thinking ?? agent?.thinking ?? '');
     if (!nextModel) {
       throw new Error(`Agent model is required for ${agent?.id || 'unknown'}.`);
     }
     agent.model = nextModel;
+    agent.thinking = nextThinking;
   }
 
   return {
     scope,
+    supervisorThinking,
     restartGateway: normalizeRestartGatewaySetting(payload?.restartGateway),
   };
 }

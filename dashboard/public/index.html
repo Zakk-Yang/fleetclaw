@@ -563,6 +563,11 @@
     color: #dbe5ef;
   }
 
+  .settings-agent-controls {
+    display: grid;
+    gap: 6px;
+  }
+
   .settings-note {
     font-size: 12px;
     color: var(--muted);
@@ -1232,16 +1237,18 @@ function buildRuntimeSettingsDraft(projectData) {
   return {
     supervisorModel: settings.supervisor?.model || projectData.supervisor?.model || '',
     checkIntervalMins: String(settings.supervisor?.checkIntervalMins ?? projectData.supervisor?.checkInterval ?? ''),
+    supervisorThinking: settings.supervisor?.thinking || projectData.supervisor?.thinking || '',
     restartGateway: false,
     agents: (settings.agents || projectData.agents || []).map((agent) => ({
       id: agent.id,
       model: agent.model || '',
+      thinking: agent.thinking || '',
     })),
   };
 }
 
 function renderRuntimeSettingsForm(projectData) {
-  const settings = projectData.runtimeSettings || { supervisor: {}, agents: [], availableModels: [] };
+  const settings = projectData.runtimeSettings || { supervisor: {}, agents: [], availableModels: [], availableThinkings: [] };
   const noticeClass = runtimeSettingsNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
     : runtimeSettingsNotice?.kind === 'ok' ? 'feedback-status feedback-status--ok'
     : 'feedback-status';
@@ -1262,19 +1269,33 @@ function renderRuntimeSettingsForm(projectData) {
             </div>
           </div>
           <div class="feedback-field">
+            <label for="runtime-supervisor-thinking">Supervisor thinking</label>
+            <input id="runtime-supervisor-thinking" name="supervisorThinking" class="feedback-input" list="runtime-thinking-options" value="${esc(runtimeSettingsDraft?.supervisorThinking || '')}" placeholder="xhigh">
+          </div>
+          <div class="feedback-field">
             <label>Lane models</label>
             <div class="settings-agent-grid">
               ${(runtimeSettingsDraft?.agents || []).map((agent) => `
                 <div class="settings-agent-row">
                   <div class="settings-agent-name">${esc(agent.id)}</div>
-                  <input
-                    class="feedback-input"
-                    list="runtime-model-options"
-                    data-agent-model-input
-                    data-agent-id="${esc(agent.id)}"
-                    value="${esc(agent.model || '')}"
-                    placeholder="openai-codex/gpt-5.4"
-                  >
+                  <div class="settings-agent-controls">
+                    <input
+                      class="feedback-input"
+                      list="runtime-model-options"
+                      data-agent-model-input
+                      data-agent-id="${esc(agent.id)}"
+                      value="${esc(agent.model || '')}"
+                      placeholder="openai-codex/gpt-5.4"
+                    >
+                    <input
+                      class="feedback-input"
+                      list="runtime-thinking-options"
+                      data-agent-thinking-input
+                      data-agent-id="${esc(agent.id)}"
+                      value="${esc(agent.thinking || '')}"
+                      placeholder="xhigh"
+                    >
+                  </div>
                 </div>
               `).join('')}
             </div>
@@ -1292,6 +1313,9 @@ function renderRuntimeSettingsForm(projectData) {
           </div>
           <datalist id="runtime-model-options">
             ${(settings.availableModels || []).map((model) => `<option value="${esc(model)}"></option>`).join('')}
+          </datalist>
+          <datalist id="runtime-thinking-options">
+            ${(settings.availableThinkings || []).map((thinking) => `<option value="${esc(thinking)}"></option>`).join('')}
           </datalist>
         </form>
       </div>
@@ -1975,22 +1999,26 @@ function wireRuntimeSettingsForm(projectData) {
 
   const supervisorModelInput = form.querySelector('[name="supervisorModel"]');
   const checkIntervalInput = form.querySelector('[name="checkIntervalMins"]');
+  const supervisorThinkingInput = form.querySelector('[name="supervisorThinking"]');
   const restartGatewayInput = form.querySelector('[name="restartGateway"]');
   const agentInputs = Array.from(form.querySelectorAll('[data-agent-model-input]'));
+  const agentThinkingInputs = Array.from(form.querySelectorAll('[data-agent-thinking-input]'));
 
   const syncDraft = () => {
     runtimeSettingsDraft = {
       supervisorModel: supervisorModelInput?.value || '',
       checkIntervalMins: checkIntervalInput?.value || '',
+      supervisorThinking: supervisorThinkingInput?.value || '',
       restartGateway: Boolean(restartGatewayInput?.checked),
       agents: agentInputs.map((input) => ({
         id: input.dataset.agentId || '',
         model: input.value || '',
+        thinking: (agentThinkingInputs.find((thinkingInput) => thinkingInput.dataset.agentId === input.dataset.agentId)?.value || '').trim(),
       })),
     };
   };
 
-  [supervisorModelInput, checkIntervalInput, restartGatewayInput, ...agentInputs].forEach((input) => {
+  [supervisorModelInput, checkIntervalInput, supervisorThinkingInput, restartGatewayInput, ...agentInputs, ...agentThinkingInputs].forEach((input) => {
     if (!input) return;
     input.addEventListener('input', syncDraft);
     input.addEventListener('change', syncDraft);
@@ -2021,14 +2049,15 @@ function wireRuntimeSettingsForm(projectData) {
       const response = await fetch('/api/runtime-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supervisor: {
-            model: runtimeSettingsDraft.supervisorModel,
-            checkIntervalMins: runtimeSettingsDraft.checkIntervalMins,
-          },
-          agents: runtimeSettingsDraft.agents,
-          restartGateway: runtimeSettingsDraft.restartGateway,
-        }),
+      body: JSON.stringify({
+        supervisor: {
+          model: runtimeSettingsDraft.supervisorModel,
+          checkIntervalMins: runtimeSettingsDraft.checkIntervalMins,
+          thinking: runtimeSettingsDraft.supervisorThinking,
+        },
+        agents: runtimeSettingsDraft.agents,
+        restartGateway: runtimeSettingsDraft.restartGateway,
+      }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
