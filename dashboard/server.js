@@ -917,6 +917,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const mainRows = liveRows.filter((row) => row.sessionKind === 'main');
   const agentMainRows = mainRows.filter((row) => row.displayAgentId !== 'supervisor');
   const supervisorMain = mainRows.find((row) => row.displayAgentId === 'supervisor') || null;
+  const supervisorLiveRows = liveRows.filter((row) => row.displayAgentId === 'supervisor');
+  const workerLiveRows = liveRows.filter((row) => row.displayAgentId !== 'supervisor');
   const runtimeIds = [
     ...(supervisorMain ? [supervisorMain.runtimeId] : []),
     ...agentMainRows.map((row) => row.runtimeId),
@@ -925,7 +927,10 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const totalTokensCurrent = safeSum(liveRows.map((row) => row.totalTokens));
   const mainTokensCurrent = safeSum(mainRows.map((row) => row.totalTokens));
   const supervisorTokensCurrent = Number(supervisorMain?.totalTokens) || 0;
+  const supervisorLiveTokensCurrent = safeSum(supervisorLiveRows.map((row) => row.totalTokens));
+  const workerTokensCurrent = safeSum(workerLiveRows.map((row) => row.totalTokens));
   const supervisorTokensPct = mainTokensCurrent > 0 ? (supervisorTokensCurrent / mainTokensCurrent) * 100 : null;
+  const supervisorLiveTokensPct = totalTokensCurrent > 0 ? (supervisorLiveTokensCurrent / totalTokensCurrent) * 100 : null;
   const avgMainContextPct = safeAverage(mainRows.map((row) => row.usagePct));
   const maxMainContextPct = mainRows.length ? Math.max(...mainRows.map((row) => Number(row.usagePct) || 0)) : 0;
   const maxLiveContextPct = liveRows.length ? Math.max(...liveRows.map((row) => Number(row.usagePct) || 0)) : 0;
@@ -1137,6 +1142,12 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
   const projectHourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
     ? totalTokensCurrent / elapsedProjectHours
     : null;
+  const workerHourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
+    ? workerTokensCurrent / elapsedProjectHours
+    : null;
+  const supervisorHourlyTokens = Number.isFinite(Number(elapsedProjectHours)) && Number(elapsedProjectHours) > 0
+    ? supervisorLiveTokensCurrent / elapsedProjectHours
+    : null;
   const roleTokenBreakdown = roleContextBreakdown
     .map((bucket) => {
       const sharePct = totalTokensCurrent > 0 ? (bucket.totalTokens / totalTokensCurrent) * 100 : null;
@@ -1165,6 +1176,13 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       level: 'warning',
       title: 'High coordination overhead',
       detail: `Supervisor owns ${formatPct(supervisorTokensPct)} of main-session tokens — orchestration may be too heavy.`,
+    });
+  }
+  if (Number.isFinite(Number(supervisorLiveTokensPct)) && supervisorLiveTokensPct >= 60) {
+    alerts.push({
+      level: 'warning',
+      title: 'Supervisor cost dominates total spend',
+      detail: `Supervisor owns ${formatPct(supervisorLiveTokensPct)} of all live-session tokens, likely driven by isolated cron review runs.`,
     });
   }
   if (pushTotal >= 4 && Number.isFinite(Number(pushPct)) && Number(pushPct) < PUSH_DEGRADED_PCT) {
@@ -1234,6 +1252,11 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       burnRate: projectHourlyTokens,
       elapsedProjectHours,
       supervisorTokensPct,
+      supervisorLiveTokensPct,
+      supervisorLiveTokensCurrent,
+      workerTokensCurrent,
+      workerHourlyTokens,
+      supervisorHourlyTokens,
       pushTriggeredCount,
       pollTriggeredCount,
       workProductFiles: workProductFiles.length,
@@ -1250,6 +1273,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
       totalTokensToday: tokensToday,
       burnRate: projectHourlyTokens,
       elapsedProjectHours,
+      workerHourlyTokens,
+      supervisorHourlyTokens,
     },
     sections: [
       {
@@ -1277,8 +1302,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
             id: 'project-hourly-tokens',
             label: 'Project hourly tokens',
             value: formatRate(projectHourlyTokens),
-            secondary: `${allLanesDone ? 'Frozen at completion' : 'Using current project time'} · elapsed ${formatElapsedHours(elapsedProjectHours)}`,
-            definition: 'Average hourly token usage across the project lifecycle. The denominator runs from first observed project activity until now, or until completion when all lanes are done.',
+            secondary: `${allLanesDone ? 'Frozen at completion' : 'Using current project time'} · includes supervisor cron · elapsed ${formatElapsedHours(elapsedProjectHours)}`,
+            definition: 'Average hourly token usage across the whole fleet lifecycle, including supervisor main and isolated cron sessions. This is cost-oriented, not a pure coding-throughput metric.',
             formula: 'project tokens / elapsed project hours',
             breakdown: roleTokenBreakdown.map((item) => ({
               label: item.label,
@@ -1286,6 +1311,22 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
               note: item.note,
             })),
             tone: Number.isFinite(Number(projectHourlyTokens)) && projectHourlyTokens > 12000 ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'worker-hourly-tokens',
+            label: 'Worker hourly tokens',
+            value: formatRate(workerHourlyTokens),
+            secondary: `${formatInt(workerLiveRows.length)} worker sessions · excludes supervisor main + cron`,
+            definition: 'Average hourly token usage attributable to coding lanes only. Use this to judge implementation throughput without supervisor coordination overhead.',
+            formula: 'worker live-session tokens / elapsed project hours',
+            breakdown: roleTokenBreakdown
+              .filter((item) => item.label !== 'supervisor')
+              .map((item) => ({
+                label: item.label,
+                value: item.hourlyValue,
+                note: item.note,
+              })),
+            tone: Number.isFinite(Number(workerHourlyTokens)) && workerHourlyTokens > 12000 ? 'warning' : 'info',
           }),
           buildMetricCard({
             id: 'active-agents',
@@ -1362,6 +1403,15 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
             definition: 'Share of main-session tokens currently sitting in the supervisor rather than in the worker lanes.',
             formula: 'supervisor main-session tokens / total main-session tokens',
             tone: Number.isFinite(Number(supervisorTokensPct)) && supervisorTokensPct >= HIGH_SUPERVISOR_SHARE_PCT ? 'warning' : 'info',
+          }),
+          buildMetricCard({
+            id: 'coordination-overhead',
+            label: 'Coordination overhead',
+            value: formatPct(supervisorLiveTokensPct),
+            secondary: `${formatInt(supervisorLiveTokensCurrent)} of ${formatInt(totalTokensCurrent)} all live tokens · includes cron`,
+            definition: 'Share of all currently reported live-session tokens consumed by the supervisor, including isolated cron review runs. This is the best single metric for \"is the control plane too expensive?\"',
+            formula: 'supervisor live-session tokens / total live-session tokens',
+            tone: Number.isFinite(Number(supervisorLiveTokensPct)) && supervisorLiveTokensPct >= 50 ? 'warning' : 'info',
           }),
           buildMetricCard({
             id: 'push-vs-poll',
