@@ -39,11 +39,12 @@ PROGRESS_CRON_NAME="${PROJECT_SLUG}-supervisor-progress-check"
 OPENCLAW_CRON_JSON="$(openclaw --profile "${PROJECT_PROFILE}" cron list --all --json 2>/dev/null || printf '{"jobs":[]}\n')"
 
 OUTPUT="$(
-OPENCLAW_CRON_JSON="${OPENCLAW_CRON_JSON}" python3 - "${PROJECT_ROOT}" "${SCOPE_FILE}" "${PROGRESS_CRON_NAME}" <<'PY'
+OPENCLAW_CRON_JSON="${OPENCLAW_CRON_JSON}" python3 - "${PROJECT_ROOT}" "${SCOPE_FILE}" "${PROGRESS_CRON_NAME}" "${PROJECT_PROFILE}" "${PROJECT_SLUG}" <<'PY'
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,6 +54,8 @@ import yaml
 project_root = Path(sys.argv[1])
 scope_file = Path(sys.argv[2])
 progress_cron_name = sys.argv[3]
+project_profile = sys.argv[4]
+project_slug = sys.argv[5]
 
 scope = yaml.safe_load(scope_file.read_text(encoding="utf-8")) or {}
 agents = scope.get("agents") or []
@@ -76,6 +79,41 @@ def format_list(values: list[str], total: int) -> str:
     return f"{len(values)}/{total} ({label})"
 
 
+def update_status_field(agent_id: str, key: str, value: str) -> None:
+    status_path = project_root / ".fleetclaw" / "agents" / agent_id / "STATUS.md"
+    lines = status_path.read_text(encoding="utf-8").splitlines() if status_path.exists() else []
+    normalized_key = key.strip().lower()
+    for index, line in enumerate(lines):
+        if ":" not in line:
+            continue
+        field = line.split(":", 1)[0].strip().lower()
+        if field == normalized_key:
+            lines[index] = f"{key}: {value}"
+            break
+    else:
+        lines.append(f"{key}: {value}")
+    status_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def notify_supervisor(agent_id: str) -> None:
+    message = f"Lane {agent_id} requests supervisor review now."
+    subprocess.run(
+        [
+            "openclaw",
+            "--profile",
+            project_profile,
+            "agent",
+            "--agent",
+            f"{project_slug}-supervisor",
+            "--message",
+            message,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
 done_ids: list[str] = []
 blocked_ids: list[str] = []
 pending_review_ids: list[str] = []
@@ -90,6 +128,7 @@ for agent in agents:
     state = status_fields.get("state", "").strip().lower()
     needs_decision = status_fields.get("needs supervisor decision", "").strip().lower()
     blocker = status_fields.get("blocker", "").strip().lower()
+    supervisor_notified = status_fields.get("supervisor notified", "").strip().lower()
 
     is_blocked = state == "blocked" or (blocker not in {"", "none"})
     is_done = state == "done"
@@ -106,6 +145,12 @@ for agent in agents:
         active_ids.append(agent_id)
     else:
         unknown_ids.append(agent_id)
+
+    if is_pending_review and supervisor_notified != "yes":
+        notify_supervisor(agent_id)
+        update_status_field(agent_id, "supervisor notified", "yes")
+    elif not is_pending_review and supervisor_notified == "yes":
+        update_status_field(agent_id, "supervisor notified", "no")
 
 total_agents = len([agent for agent in agents if str(agent.get("id") or "").strip()])
 
