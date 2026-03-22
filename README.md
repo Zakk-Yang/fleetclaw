@@ -96,6 +96,8 @@ For a full runtime-state wipe without deleting your project files:
 - The dashboard also shows compact control-plane traffic so you can inspect recent agent notifications and supervisor decisions
 - The dashboard also includes a human feedback form that routes review notes into the supervisor loop by default and keeps a recent submission trail
 - FleetClaw also starts a background status reconciler that watches recorded supervisor decisions and forces stale accepted checkpoints to `State: done`
+- The runtime settings dashboard now edits supervisor/agent models, cadences, and thinking levels through `/api/runtime-settings`; applying changes reruns `setup.sh`/cron so the next turn picks up the new config without further manual steps.
+- `project-status.sh` now detects `needs supervisor decision: yes`, sends a one-off message to the supervisor session, and tracks a `supervisor notified` flag so a lane doesn’t wait for the next cron tick before getting reviewed.
 - FleetClaw writes `.fleetclaw/PROJECT_STATUS.md` with an overall fleet summary and automatically idles the supervisor progress cron when every coding lane is done
 
 ## Authoring Model
