@@ -53,6 +53,15 @@ function loadScope() {
   return yaml.load(fs.readFileSync(SCOPE_FILE, 'utf8'));
 }
 
+function writeScope(scope) {
+  const dumped = yaml.dump(scope, {
+    lineWidth: 120,
+    noRefs: true,
+    quotingType: '"',
+  });
+  fs.writeFileSync(SCOPE_FILE, `${dumped.trimEnd()}\n`, 'utf8');
+}
+
 function resolveScopeText(rawText, rawFilePath) {
   if (rawFilePath && typeof rawFilePath === 'string') {
     const expanded = rawFilePath.startsWith('~') ? rawFilePath.replace('~', process.env.HOME) : rawFilePath;
@@ -303,6 +312,12 @@ function execFileJson(command, args, options = {}) {
   } catch {
     return null;
   }
+}
+
+function formatExecError(error) {
+  const stderr = typeof error?.stderr === 'string' ? error.stderr : error?.stderr?.toString?.('utf8');
+  const stdout = typeof error?.stdout === 'string' ? error.stdout : error?.stdout?.toString?.('utf8');
+  return trimString(stderr || stdout || error?.message || 'Command failed', 4000);
 }
 
 function getFileMtime(filePath) {
@@ -908,6 +923,120 @@ function resolveModelContextLimit(profile) {
     || models.find((model) => Array.isArray(model?.tags) && model.tags.includes('default'));
   const contextWindow = Number(candidate?.contextWindow);
   return Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : null;
+}
+
+function loadAvailableModels(profile) {
+  const listing = execFileJson('openclaw', ['--profile', profile, 'models', 'list', '--json']);
+  const models = Array.isArray(listing?.models) ? listing.models : [];
+  return uniqueSorted(
+    models
+      .map((model) => trimString(model?.key, 200))
+      .filter(Boolean),
+  );
+}
+
+function normalizeModelSetting(value) {
+  return trimString(value, 200);
+}
+
+function normalizeFrequencySetting(value) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1440) return null;
+  return parsed;
+}
+
+function normalizeRestartGatewaySetting(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function resolveRuntimeSettings(scope, profile) {
+  return {
+    note: 'Model changes are written to project-scope.yaml. Cadence updates reinstall supervisor cron. Restarting the gateway is optional and only needed when you want the next queued turn to pick up the refreshed agent registry immediately.',
+    availableModels: loadAvailableModels(profile),
+    supervisor: {
+      model: scope?.supervisor?.model || '',
+      checkIntervalMins: Number(scope?.supervisor?.check_interval_mins || 10),
+    },
+    agents: (scope?.agents || []).map((agent) => ({
+      id: String(agent?.id || ''),
+      model: agent?.model || '',
+    })),
+    restartGatewaySupported: true,
+  };
+}
+
+function applyRuntimeSettings(scope, payload) {
+  const supervisorModel = normalizeModelSetting(payload?.supervisor?.model ?? scope?.supervisor?.model);
+  const checkIntervalMins = normalizeFrequencySetting(payload?.supervisor?.checkIntervalMins ?? scope?.supervisor?.check_interval_mins);
+  if (!supervisorModel) {
+    throw new Error('Supervisor model is required.');
+  }
+  if (checkIntervalMins === null) {
+    throw new Error('Supervisor check interval must be between 1 and 1440 minutes.');
+  }
+
+  const incomingAgents = new Map();
+  if (Array.isArray(payload?.agents)) {
+    for (const item of payload.agents) {
+      const id = trimString(item?.id, 120);
+      if (id) incomingAgents.set(id, item);
+    }
+  }
+
+  scope.supervisor = scope.supervisor || {};
+  scope.supervisor.model = supervisorModel;
+  scope.supervisor.check_interval_mins = checkIntervalMins;
+
+  for (const agent of scope.agents || []) {
+    const incoming = incomingAgents.get(String(agent?.id || ''));
+    const nextModel = normalizeModelSetting(incoming?.model ?? agent?.model);
+    if (!nextModel) {
+      throw new Error(`Agent model is required for ${agent?.id || 'unknown'}.`);
+    }
+    agent.model = nextModel;
+  }
+
+  return {
+    scope,
+    restartGateway: normalizeRestartGatewaySetting(payload?.restartGateway),
+  };
+}
+
+function runRuntimeRefresh(profile, { restartGateway = false } = {}) {
+  execFileSync('bash', [path.join(SCRIPT_DIR, 'setup.sh')], {
+    cwd: SCRIPT_DIR,
+    encoding: 'utf8',
+    timeout: 120000,
+  });
+
+  const cronScript = path.join(SCRIPT_DIR, 'generated', 'openclaw-cron.sh');
+  if (fs.existsSync(cronScript)) {
+    execFileSync('bash', [cronScript], {
+      cwd: SCRIPT_DIR,
+      encoding: 'utf8',
+      timeout: 30000,
+    });
+  }
+
+  execFileSync('bash', [path.join(SCRIPT_DIR, 'sync-supervisor-cron.sh'), '--quiet'], {
+    cwd: SCRIPT_DIR,
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+
+  execFileSync('bash', [path.join(SCRIPT_DIR, 'project-status.sh'), '--quiet'], {
+    cwd: SCRIPT_DIR,
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+
+  if (restartGateway) {
+    execFileSync('openclaw', ['--profile', profile, 'gateway', 'restart'], {
+      cwd: SCRIPT_DIR,
+      encoding: 'utf8',
+      timeout: 30000,
+    });
+  }
 }
 
 function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git, controlPlaneEntries) {
@@ -1846,6 +1975,7 @@ function buildDashboardPayload() {
         thinking: scope.supervisor?.thinking || '',
         statusReconcileIntervalSecs: scope.supervisor?.status_reconcile_interval_secs || 30,
       },
+      runtimeSettings: resolveRuntimeSettings(scope, profile),
       protocol: {
         pollingFallback: scope?.protocol?.polling_fallback ?? true,
         agentToSupervisorMaxTokens: scope?.protocol?.agent_to_supervisor_max_tokens || 80,
@@ -1929,6 +2059,34 @@ app.get('/api/metrics', (req, res) => {
   const payload = getDashboardPayload();
   if (!payload) return res.status(404).json({ error: 'project-scope.yaml not found' });
   res.json(payload.metrics);
+});
+
+app.post('/api/runtime-settings', (req, res) => {
+  const scope = loadScope();
+  if (!scope) return res.status(404).json({ error: 'project-scope.yaml not found' });
+
+  const profile = resolveProfile(scope);
+
+  try {
+    const { scope: nextScope, restartGateway } = applyRuntimeSettings(scope, req.body || {});
+    writeScope(nextScope);
+    runRuntimeRefresh(profile, { restartGateway });
+    invalidateDashboardCache();
+
+    const refreshedScope = loadScope();
+    return res.json({
+      ok: true,
+      runtimeSettings: resolveRuntimeSettings(refreshedScope || nextScope, profile),
+      restartedGateway: restartGateway,
+      note: restartGateway
+        ? 'Settings saved, supervisor cron reinstalled, and the gateway was restarted to force the next queued turn onto the refreshed agent registry.'
+        : 'Settings saved and supervisor cron reinstalled. If you need the very next queued turn to force-refresh its agent registry, apply again with gateway restart enabled.',
+    });
+  } catch (error) {
+    return res.status(400).json({
+      error: error instanceof Error ? formatExecError(error) : String(error),
+    });
+  }
 });
 
 app.post('/api/feedback', (req, res) => {

@@ -541,6 +541,34 @@
     gap: 16px;
   }
 
+  .settings-agent-grid {
+    display: grid;
+    gap: 10px;
+  }
+
+  .settings-agent-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(145, 160, 179, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .settings-agent-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #dbe5ef;
+  }
+
+  .settings-note {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
   .feedback-form,
   .feedback-feed,
   .feedback-entry {
@@ -918,6 +946,9 @@ let feedbackDraft = {
 };
 let feedbackNotice = null;
 let feedbackSubmitting = false;
+let runtimeSettingsDraft = null;
+let runtimeSettingsNotice = null;
+let runtimeSettingsSubmitting = false;
 
 async function fetchAll() {
   const response = await fetch('/api/dashboard');
@@ -1193,6 +1224,78 @@ function renderFeedbackForm(projectData, feedback) {
         </div>
       </section>
     </div>
+  `;
+}
+
+function buildRuntimeSettingsDraft(projectData) {
+  const settings = projectData.runtimeSettings || {};
+  return {
+    supervisorModel: settings.supervisor?.model || projectData.supervisor?.model || '',
+    checkIntervalMins: String(settings.supervisor?.checkIntervalMins ?? projectData.supervisor?.checkInterval ?? ''),
+    restartGateway: false,
+    agents: (settings.agents || projectData.agents || []).map((agent) => ({
+      id: agent.id,
+      model: agent.model || '',
+    })),
+  };
+}
+
+function renderRuntimeSettingsForm(projectData) {
+  const settings = projectData.runtimeSettings || { supervisor: {}, agents: [], availableModels: [] };
+  const noticeClass = runtimeSettingsNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
+    : runtimeSettingsNotice?.kind === 'ok' ? 'feedback-status feedback-status--ok'
+    : 'feedback-status';
+
+  return `
+    <section class="card">
+      <div class="card-header"><h2>Runtime Settings</h2></div>
+      <div class="card-body">
+        <form class="feedback-form" data-runtime-settings-form>
+          <div class="feedback-form__grid">
+            <div class="feedback-field">
+              <label for="runtime-supervisor-model">Supervisor model</label>
+              <input id="runtime-supervisor-model" name="supervisorModel" class="feedback-input" list="runtime-model-options" value="${esc(runtimeSettingsDraft?.supervisorModel || '')}" placeholder="openai-codex/gpt-5.4">
+            </div>
+            <div class="feedback-field">
+              <label for="runtime-check-interval">Check every (minutes)</label>
+              <input id="runtime-check-interval" type="number" min="1" max="1440" step="1" name="checkIntervalMins" class="feedback-input" value="${esc(runtimeSettingsDraft?.checkIntervalMins || '')}" placeholder="10">
+            </div>
+          </div>
+          <div class="feedback-field">
+            <label>Lane models</label>
+            <div class="settings-agent-grid">
+              ${(runtimeSettingsDraft?.agents || []).map((agent) => `
+                <div class="settings-agent-row">
+                  <div class="settings-agent-name">${esc(agent.id)}</div>
+                  <input
+                    class="feedback-input"
+                    list="runtime-model-options"
+                    data-agent-model-input
+                    data-agent-id="${esc(agent.id)}"
+                    value="${esc(agent.model || '')}"
+                    placeholder="openai-codex/gpt-5.4"
+                  >
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <label class="feedback-checkbox">
+            <input type="checkbox" name="restartGateway" ${runtimeSettingsDraft?.restartGateway ? 'checked' : ''}>
+            <span>Restart gateway after apply so the next queued turn uses the refreshed agent registry</span>
+          </label>
+          <div class="feedback-actions">
+            <div>
+              <div class="settings-note">${esc(settings.note || 'Settings apply to the next cron cycle and future turns. Use gateway restart only when you want to force the next queued turn onto the new config immediately.')}</div>
+              <div class="${noticeClass}" data-runtime-settings-status>${esc(runtimeSettingsNotice?.text || '')}</div>
+            </div>
+            <button type="submit" class="feedback-submit" ${runtimeSettingsSubmitting ? 'disabled' : ''}>${runtimeSettingsSubmitting ? 'Applying...' : 'Apply Settings'}</button>
+          </div>
+          <datalist id="runtime-model-options">
+            ${(settings.availableModels || []).map((model) => `<option value="${esc(model)}"></option>`).join('')}
+          </datalist>
+        </form>
+      </div>
+    </section>
   `;
 }
 
@@ -1761,6 +1864,10 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
     </div>
     ${renderAlertStrip(analytics)}
     ${renderMetricSections(analytics)}
+    ${renderRuntimeSettingsForm({
+      ...projectData,
+      agents,
+    })}
     ${renderFeedbackForm(projectData, feedback)}
     <section class="card">
       <div class="card-header"><h2>Role snapshot</h2></div>
@@ -1862,9 +1969,100 @@ function wireFeedbackForm(projectData) {
   });
 }
 
-function isFeedbackFormActive() {
+function wireRuntimeSettingsForm(projectData) {
+  const form = document.querySelector('[data-runtime-settings-form]');
+  if (!form) return;
+
+  const supervisorModelInput = form.querySelector('[name="supervisorModel"]');
+  const checkIntervalInput = form.querySelector('[name="checkIntervalMins"]');
+  const restartGatewayInput = form.querySelector('[name="restartGateway"]');
+  const agentInputs = Array.from(form.querySelectorAll('[data-agent-model-input]'));
+
+  const syncDraft = () => {
+    runtimeSettingsDraft = {
+      supervisorModel: supervisorModelInput?.value || '',
+      checkIntervalMins: checkIntervalInput?.value || '',
+      restartGateway: Boolean(restartGatewayInput?.checked),
+      agents: agentInputs.map((input) => ({
+        id: input.dataset.agentId || '',
+        model: input.value || '',
+      })),
+    };
+  };
+
+  [supervisorModelInput, checkIntervalInput, restartGatewayInput, ...agentInputs].forEach((input) => {
+    if (!input) return;
+    input.addEventListener('input', syncDraft);
+    input.addEventListener('change', syncDraft);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    syncDraft();
+
+    if (!runtimeSettingsDraft.supervisorModel.trim()) {
+      runtimeSettingsNotice = { kind: 'error', text: 'Supervisor model is required.' };
+      render();
+      return;
+    }
+
+    const missingAgent = runtimeSettingsDraft.agents.find((agent) => !agent.model.trim());
+    if (missingAgent) {
+      runtimeSettingsNotice = { kind: 'error', text: `Model is required for ${missingAgent.id}.` };
+      render();
+      return;
+    }
+
+    runtimeSettingsSubmitting = true;
+    runtimeSettingsNotice = { kind: 'info', text: 'Applying settings...' };
+    render();
+
+    try {
+      const response = await fetch('/api/runtime-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supervisor: {
+            model: runtimeSettingsDraft.supervisorModel,
+            checkIntervalMins: runtimeSettingsDraft.checkIntervalMins,
+          },
+          agents: runtimeSettingsDraft.agents,
+          restartGateway: runtimeSettingsDraft.restartGateway,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `Runtime settings API failed: ${response.status}`);
+      }
+
+      runtimeSettingsSubmitting = false;
+      runtimeSettingsNotice = {
+        kind: 'ok',
+        text: payload.note || 'Settings applied.',
+      };
+      runtimeSettingsDraft = buildRuntimeSettingsDraft({
+        ...projectData,
+        runtimeSettings: payload.runtimeSettings,
+      });
+      await fetchAll();
+    } catch (error) {
+      runtimeSettingsSubmitting = false;
+      runtimeSettingsNotice = {
+        kind: 'error',
+        text: error instanceof Error ? error.message : String(error),
+      };
+      render();
+    }
+  });
+}
+
+function isDashboardFormActive() {
   const active = document.activeElement;
-  return Boolean(active && typeof active.closest === 'function' && active.closest('[data-feedback-form]'));
+  return Boolean(
+    active
+    && typeof active.closest === 'function'
+    && (active.closest('[data-feedback-form]') || active.closest('[data-runtime-settings-form]'))
+  );
 }
 
 function render() {
@@ -1877,6 +2075,12 @@ function render() {
 
   if (!feedbackDraft.surface) {
     feedbackDraft.surface = projectData.review?.url || '';
+  }
+  if (!runtimeSettingsDraft) {
+    runtimeSettingsDraft = buildRuntimeSettingsDraft({
+      ...projectData,
+      agents,
+    });
   }
 
   document.getElementById('project-name').textContent = projectData.name;
@@ -1893,6 +2097,10 @@ function render() {
 
   wireTabs();
   wireFeedbackForm(projectData);
+  wireRuntimeSettingsForm({
+    ...projectData,
+    agents,
+  });
 }
 
 function refresh() {
@@ -1906,7 +2114,7 @@ function refresh() {
 
 refresh();
 setInterval(() => {
-  if (!feedbackSubmitting && !isFeedbackFormActive()) {
+  if (!feedbackSubmitting && !runtimeSettingsSubmitting && !isDashboardFormActive()) {
     refresh();
   }
 }, 10000);

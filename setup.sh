@@ -289,6 +289,32 @@ print(secrets.token_hex(24))
 PY
 }
 
+resolve_profile_gateway_token() {
+    local config_path="$1"
+    local existing_token=""
+
+    if [[ -f "${config_path}" ]]; then
+        existing_token="$(python3 - "${config_path}" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+match = re.search(r'gateway:\s*\{.*?auth:\s*\{.*?token:\s*"([^"]+)"', text, re.S)
+if match:
+    print(match.group(1))
+PY
+)"
+    fi
+
+    if [[ -n "${existing_token}" ]]; then
+        printf '%s\n' "${existing_token}"
+    else
+        generate_gateway_token
+    fi
+}
+
 resolve_main_auth_profiles_json() {
     local auth_profiles_json
     auth_profiles_json="$(openclaw config get auth.profiles --json 2>/dev/null || true)"
@@ -561,7 +587,7 @@ main() {
     PROFILE_ROOT="${HOME}/.openclaw-${PROJECT_PROFILE}"
     PROFILE_CONFIG_PATH="${PROFILE_ROOT}/openclaw.json"
     PROFILE_GATEWAY_PORT="$(derive_gateway_port "${PROJECT_PROFILE}" "$(yval_default '.advanced.gateway_port' '')")"
-    PROFILE_GATEWAY_TOKEN="$(generate_gateway_token)"
+    PROFILE_GATEWAY_TOKEN="$(resolve_profile_gateway_token "${PROFILE_CONFIG_PATH}")"
     PROFILE_AUTH_PROFILES_JSON="$(resolve_main_auth_profiles_json)"
     PROGRESS_CRON_NAME="${PROJECT_SLUG}-supervisor-progress-check"
     MORNING_CRON_NAME="${PROJECT_SLUG}-supervisor-morning-report"
