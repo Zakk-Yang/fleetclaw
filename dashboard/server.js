@@ -131,6 +131,12 @@ function safeAverage(values) {
   return safeSum(valid) / valid.length;
 }
 
+function roundFinite(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Number(number.toFixed(digits));
+}
+
 function median(values) {
   const valid = values.map((value) => Number(value)).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
   if (!valid.length) return null;
@@ -1078,8 +1084,8 @@ function buildOperationalMetrics(scope, projectRoot, profile, agents, live, git,
     totalTokens: Math.round(totalTokensCurrent),
     mainTokens: Math.round(mainTokensCurrent),
     supervisorTokens: Math.round(supervisorTokensCurrent),
-    avgContextPct: Number.isFinite(Number(avgRoleContextPct)) ? Number(avgRoleContextPct.toFixed(2)) : null,
-    avgMainContextPct: Number.isFinite(Number(avgMainContextPct)) ? Number(avgMainContextPct.toFixed(2)) : null,
+    avgContextPct: roundFinite(avgRoleContextPct),
+    avgMainContextPct: roundFinite(avgMainContextPct),
     activeAgents,
     blockedAgents: blockedAgents.length,
     acceptedTasksToday,
