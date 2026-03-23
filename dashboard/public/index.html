@@ -1358,11 +1358,14 @@ function renderTabs(sectionId, tabs) {
 }
 
 function renderLaneCard(role) {
+  const sessionLink = role.sessionUrl
+    ? `<a href="${esc(role.sessionUrl)}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:0.82rem;">Open in OpenClaw &rarr;</a>`
+    : '';
   return `
     <article class="lane-card">
       <div class="lane-card__top">
         <div>
-          <h3>${esc(role.title)}</h3>
+          <h3>${esc(role.title)} ${sessionLink}</h3>
           <div class="lane-card__meta">${esc(role.meta)}</div>
         </div>
         ${renderStatusBadge(role.state)}
@@ -1988,6 +1991,7 @@ function renderRoleSnapshot(agents, supervisor, projectData) {
     state: 'monitoring',
     summary: lastMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.',
     context: renderSessionSummary(supervisor.mainSession),
+    sessionUrl: supervisor.sessionUrl || null,
     decisionTitle: 'Role',
     decisionBody: 'Reviews checkpoints, inspects git state, and routes the next decision.',
   }));
@@ -1999,6 +2003,7 @@ function renderRoleSnapshot(agents, supervisor, projectData) {
       state: agent.statusFields.state || 'unknown',
       summary: agent.statusFields.summary || 'No summary yet.',
       context: renderSessionSummary(agent.mainSession),
+      sessionUrl: agent.sessionUrl || null,
       decisionTitle: 'Latest supervisor instruction',
       decisionBody: renderDecisionSummary(agent.latestSupervisorDecision),
     }));
