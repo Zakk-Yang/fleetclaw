@@ -1,5 +1,5 @@
 # STATUS.md
-State: working
+State: starting
 Needs supervisor decision: no
 Requested decision: none
 Summary: Not started yet.

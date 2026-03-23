@@ -24,7 +24,11 @@ Your agent-specific files are in: `.fleetclaw/agents/{{AGENT_ID}}/`
 1. Read `.fleetclaw/agents/{{AGENT_ID}}/BRIEF.md`, then `.fleetclaw/agents/{{AGENT_ID}}/STATUS.md`; skim MEMORY.md only if durable past decisions matter
 2. Plan your approach — write it to `.fleetclaw/agents/{{AGENT_ID}}/PLAN.md`
 3. Implement incrementally in your focus directories ({{FOCUS}}), committing after each logical unit
-4. After each logical unit, refresh `.fleetclaw/agents/{{AGENT_ID}}/STATUS.md` with the latest short factual checkpoint only
+4. MANDATORY after each commit: update `.fleetclaw/agents/{{AGENT_ID}}/STATUS.md`. This is REQUIRED — the supervisor and dashboard depend on it for live progress tracking. Update these fields:
+   - State: use lifecycle substates — `starting` (reading brief), `planning` (writing plan), `working` (implementing), `testing` (running checks), `ready-for-review` (requesting acceptance), `done` (accepted)
+   - Summary: one line describing what you just completed
+   - Files touched: cumulative list of files modified
+   - Next step: what you will do next
 5. Run tests after each significant change
 6. Use memory_search / memory_get to retrieve old notes instead of rereading full memory/YYYY-MM-DD.md files
 7. If a stop rule triggers, update STATUS.md, notify the supervisor with `.fleetclaw/bin/notify-supervisor.sh`, and stop active implementation until the supervisor responds
@@ -54,7 +58,7 @@ Your agent-specific files are in: `.fleetclaw/agents/{{AGENT_ID}}/`
 ## STATUS.md Format
 ```markdown
 # STATUS.md
-State: working | blocked | ready-for-review | done
+State: starting | planning | blocked | working | testing | ready-for-review | done
 Needs supervisor decision: no | yes
 Requested decision: none | continue | redirect | stop | accept_done
 Summary: ...
