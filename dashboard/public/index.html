@@ -2021,7 +2021,7 @@ function renderRoleSnapshot(agents, supervisor, projectData) {
       context: renderSessionSummary(agent.mainSession),
       sessionUrl: agent.sessionUrl || null,
       nextStep: sf['next step'] && sf['next step'] !== 'none' ? sf['next step'] : null,
-      supervisorInstruction: renderDecisionSummary(agent.latestSupervisorDecision),
+      supervisorInstruction: agent.latestSupervisorDecision ? renderDecisionSummary(agent.latestSupervisorDecision) : null,
     }));
   }
 
