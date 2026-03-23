@@ -1015,7 +1015,7 @@ function loadAvailableModels(profile) {
   // 1. All models from openclaw (configured + discovered across all providers with auth)
   const listing = execFileJson('openclaw', ['--profile', profile, 'models', 'list', '--all', '--json']);
   if (Array.isArray(listing?.models)) {
-    const allowedPrefixes = ['ollama/', 'openai-codex/'];
+    const allowedPrefixes = ['ollama/', 'openai/', 'openai-codex/'];
     for (const model of listing.models) {
       const key = trimString(model?.key, 200);
       if (key && allowedPrefixes.some((p) => key.startsWith(p))) {
