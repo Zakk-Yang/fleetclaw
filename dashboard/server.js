@@ -472,6 +472,34 @@ function findLatestSupervisorDecision(profile, runtimeAgentId, supervisorRuntime
     }
   }
 
+  // Fallback: read from control-plane.jsonl if session provenance is missing
+  if (!latest) {
+    const projectRoot = path.resolve(SCRIPT_DIR, '..');
+    if (projectRoot) {
+      const logFile = path.join(projectRoot, '.fleetclaw', 'logs', 'control-plane.jsonl');
+      if (fs.existsSync(logFile)) {
+        try {
+          const lines = fs.readFileSync(logFile, 'utf8').split('\n');
+          const targetRuntimeId = runtimeAgentId;
+          for (const rawLine of lines) {
+            if (!rawLine) continue;
+            let entry;
+            try { entry = JSON.parse(rawLine); } catch { continue; }
+            if (entry.direction !== 'supervisor_to_agent') continue;
+            if (entry.targetRuntimeId !== targetRuntimeId) continue;
+            if (entry.status === 'dispatch-error') continue;
+            const sentAt = parseTimestamp(entry.createdAt);
+            if (!sentAt) continue;
+            const text = `SUPERVISOR_DECISION: ${entry.decision}\nEVENT_ID: ${entry.eventId}\nNEXT: ${entry.next || 'n/a'}${entry.reason ? `\nREASON: ${entry.reason}` : ''}`;
+            if (!latest || sentAt > latest.sentAt) {
+              latest = { decision: entry.decision, text, sentAt, sourceSessionKey: 'control-plane-log' };
+            }
+          }
+        } catch { /* ignore read errors */ }
+      }
+    }
+  }
+
   if (!latest) return null;
   return {
     decision: latest.decision,
