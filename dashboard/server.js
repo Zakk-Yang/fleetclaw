@@ -2241,6 +2241,20 @@ app.post('/api/feedback', (req, res) => {
   entry.runId = delivery.runId || entry.id;
   appendFeedbackEntry(entry);
   invalidateDashboardCache();
+
+  // Wake up supervisor cron if project was marked complete
+  if (target === 'supervisor' || targetInfo?.kind === 'supervisor') {
+    try {
+      const cronScript = path.join(SCRIPT_DIR, 'generated', 'openclaw-cron.sh');
+      if (fs.existsSync(cronScript)) {
+        execFileSync('bash', [cronScript], { cwd: SCRIPT_DIR, encoding: 'utf8', timeout: 30000 });
+      }
+      execFileSync('bash', [path.join(SCRIPT_DIR, 'sync-supervisor-cron.sh'), '--quiet'], {
+        cwd: SCRIPT_DIR, encoding: 'utf8', timeout: 30000,
+      });
+    } catch { /* best-effort cron reinstall */ }
+  }
+
   return res.json({ ok: true, entry });
 });
 
