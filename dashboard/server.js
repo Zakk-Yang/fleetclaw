@@ -487,8 +487,8 @@ function resolveGatewayConfigFromProfileFile(profile) {
 
   try {
     const raw = fs.readFileSync(profileConfigPath, 'utf8');
-    const portMatch = raw.match(/\bgateway:\s*\{[\s\S]*?\bport:\s*(\d+)/);
-    const tokenMatch = raw.match(/\bgateway:\s*\{[\s\S]*?\bauth:\s*\{[\s\S]*?\btoken:\s*"([^"]+)"/);
+    const portMatch = raw.match(/"?gateway"?\s*:\s*\{[\s\S]*?"?port"?\s*:\s*(\d+)/);
+    const tokenMatch = raw.match(/"?gateway"?\s*:\s*\{[\s\S]*?"?auth"?\s*:\s*\{[\s\S]*?"?token"?\s*:\s*"([^"]+)"/);
 
     return {
       gateway: {
