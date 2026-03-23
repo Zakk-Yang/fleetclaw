@@ -1010,13 +1010,40 @@ function resolveModelContextLimit(profile) {
 }
 
 function loadAvailableModels(profile) {
+  const models = [];
+
+  // 1. Models from openclaw config
   const listing = execFileJson('openclaw', ['--profile', profile, 'models', 'list', '--json']);
-  const models = Array.isArray(listing?.models) ? listing.models : [];
-  return uniqueSorted(
-    models
-      .map((model) => trimString(model?.key, 200))
-      .filter(Boolean),
-  );
+  if (Array.isArray(listing?.models)) {
+    for (const model of listing.models) {
+      const key = trimString(model?.key, 200);
+      if (key) models.push(key);
+    }
+  }
+
+  // 2. Local Ollama models
+  try {
+    const raw = execSync('curl -s http://localhost:11434/api/tags', { encoding: 'utf8', timeout: 5000 });
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.models)) {
+      for (const m of parsed.models) {
+        if (m?.name) models.push(`ollama/${m.name}`);
+      }
+    }
+  } catch { /* ollama not running or unreachable */ }
+
+  // 3. OpenAI-codex models (if auth is configured)
+  const profileConfigPath = resolveProfileConfigPath(profile);
+  if (fs.existsSync(profileConfigPath)) {
+    try {
+      const raw = fs.readFileSync(profileConfigPath, 'utf8');
+      if (raw.includes('openai-codex')) {
+        models.push('openai-codex/gpt-4.1', 'openai-codex/gpt-4.1-mini', 'openai-codex/gpt-4.1-nano', 'openai-codex/o3', 'openai-codex/o4-mini', 'openai-codex/gpt-5.4');
+      }
+    } catch { /* ignore */ }
+  }
+
+  return uniqueSorted(models.filter(Boolean));
 }
 
 function normalizeModelSetting(value) {
