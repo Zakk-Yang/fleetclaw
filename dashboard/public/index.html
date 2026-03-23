@@ -9,27 +9,22 @@
     --bg: #0a0f16;
     --surface: #101822;
     --surface-2: #152131;
-    --surface-3: #0d141d;
     --border: #243244;
     --text: #eef4fb;
     --muted: #91a0b3;
     --accent: #72d0ff;
-    --blue: #4d86ff;
     --green: #46d483;
     --yellow: #f0c45a;
     --red: #ff7870;
     --purple: #c7a9ff;
-    --shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    background:
-      radial-gradient(circle at top left, rgba(77, 134, 255, 0.18), transparent 30%),
-      radial-gradient(circle at top right, rgba(114, 208, 255, 0.12), transparent 26%),
-      linear-gradient(180deg, #081018 0%, #0a0f16 100%);
+    background: var(--bg);
     color: var(--text);
+    font-size: 14px;
     line-height: 1.5;
     min-height: 100vh;
   }
@@ -37,19 +32,25 @@
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  /* ── Header ────────────────────────────────────── */
+
   .header {
     position: sticky;
     top: 0;
     z-index: 20;
     backdrop-filter: blur(18px);
-    background: rgba(10, 15, 22, 0.84);
-    border-bottom: 1px solid rgba(145, 160, 179, 0.12);
+    background: rgba(10, 15, 22, 0.88);
+    border-bottom: 1px solid var(--border);
   }
 
   .header__inner {
     max-width: 1520px;
     margin: 0 auto;
-    padding: 18px 24px;
+    padding: 14px 24px;
     display: flex;
     align-items: center;
     gap: 14px;
@@ -59,23 +60,23 @@
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
   }
 
   .brand__mark {
-    width: 42px;
-    height: 42px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, rgba(77, 134, 255, 0.92), rgba(114, 208, 255, 0.92));
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #4d86ff);
     color: #081018;
     display: grid;
     place-items: center;
     font-weight: 800;
-    font-size: 18px;
+    font-size: 15px;
   }
 
   .brand h1 {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
   }
 
@@ -84,7 +85,6 @@
   .eyebrow,
   .subtle,
   .field-label,
-  .stat-label,
   .lane-card__meta,
   .role-meta,
   .decision-subtitle,
@@ -99,7 +99,7 @@
   .role-meta,
   .decision-subtitle,
   .table-note {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .header__spacer { flex: 1; }
@@ -107,11 +107,11 @@
   .tag {
     display: inline-flex;
     align-items: center;
-    padding: 4px 10px;
+    padding: 3px 10px;
     border-radius: 999px;
     border: 1px solid rgba(145, 160, 179, 0.18);
     background: rgba(255, 255, 255, 0.03);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
   }
 
@@ -119,8 +119,8 @@
     border: 1px solid rgba(114, 208, 255, 0.22);
     background: rgba(114, 208, 255, 0.08);
     color: var(--text);
-    padding: 8px 14px;
-    border-radius: 999px;
+    padding: 6px 14px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 13px;
   }
@@ -129,25 +129,45 @@
     background: rgba(114, 208, 255, 0.18);
   }
 
+  /* ── Layout ────────────────────────────────────── */
+
   .container {
     max-width: 1520px;
     margin: 0 auto;
     padding: 24px;
     display: grid;
-    gap: 20px;
+    gap: 24px;
   }
 
+  .section-header {
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    margin-bottom: 12px;
+  }
+
+  .section-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .section-subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Cards ─────────────────────────────────────── */
+
   .card {
-    background: linear-gradient(180deg, rgba(16, 24, 34, 0.96), rgba(13, 20, 29, 0.96));
-    border: 1px solid rgba(145, 160, 179, 0.14);
-    border-radius: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
     overflow: hidden;
-    box-shadow: var(--shadow);
   }
 
   .card-header {
     padding: 16px 18px;
-    border-bottom: 1px solid rgba(145, 160, 179, 0.12);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -160,34 +180,30 @@
   }
 
   .card-body {
-    padding: 18px;
+    padding: 16px;
   }
 
-  .summary-grid {
+  /* ── Hero / Fleet overview ─────────────────────── */
+
+  .hero-card .card-body {
     display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.8fr);
     gap: 16px;
   }
 
-  .hero-card {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .hero-card::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(circle at top right, rgba(114, 208, 255, 0.12), transparent 28%),
-      radial-gradient(circle at bottom left, rgba(77, 134, 255, 0.14), transparent 30%);
-    pointer-events: none;
-  }
-
-  .hero-card .card-body {
-    position: relative;
+  .hero-title {
     display: grid;
-    gap: 18px;
+    gap: 6px;
+  }
+
+  .hero-title h2 {
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  .hero-title p {
+    max-width: 62ch;
+    color: #d8e1ec;
+    font-size: 13px;
   }
 
   .eyebrow {
@@ -195,58 +211,46 @@
     letter-spacing: 0.12em;
     font-size: 11px;
     font-weight: 700;
+    color: var(--muted);
   }
 
-  .hero-title {
-    display: grid;
-    gap: 8px;
-  }
-
-  .hero-title h2 {
-    font-size: clamp(1.8rem, 4vw, 2.9rem);
-    line-height: 1.02;
-    max-width: 12ch;
-  }
-
-  .hero-title p {
-    max-width: 62ch;
-    color: #d8e1ec;
-  }
-
-  .hero-links {
+  .quick-stats {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
   }
 
-  .link-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .quick-stat {
     padding: 10px 14px;
-    border-radius: 999px;
-    border: 1px solid rgba(114, 208, 255, 0.22);
-    background: rgba(114, 208, 255, 0.08);
-    color: var(--text);
-    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    display: grid;
+    gap: 2px;
+    min-width: 120px;
   }
 
-  .hero-review {
-    display: grid;
-    gap: 10px;
-    padding: 14px 16px;
-    border-radius: 16px;
-    background: rgba(6, 11, 18, 0.38);
-    border: 1px solid rgba(145, 160, 179, 0.12);
+  .quick-stat__label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+
+  .quick-stat__value {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .project-status-panel {
     display: grid;
-    gap: 12px;
+    gap: 10px;
     padding: 14px 16px;
-    border-radius: 16px;
+    border-radius: 12px;
     background: rgba(6, 11, 18, 0.5);
-    border: 1px solid rgba(145, 160, 179, 0.12);
+    border: 1px solid var(--border);
   }
 
   .project-status-top {
@@ -258,139 +262,76 @@
 
   .project-status-summary {
     color: #d8e1ec;
+    font-size: 13px;
   }
 
-  .hero-review code,
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  .hero-links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
-  .summary-card .card-body,
-  .support-grid,
-  .lane-grid,
-  .role-stack {
-    display: grid;
-    gap: 14px;
+  .link-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(114, 208, 255, 0.22);
+    background: rgba(114, 208, 255, 0.08);
+    color: var(--text);
+    font-size: 13px;
   }
 
-  .stat-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+  .link-pill:hover {
+    background: rgba(114, 208, 255, 0.16);
+    text-decoration: none;
   }
 
-  .stat {
-    padding: 14px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(145, 160, 179, 0.12);
-  }
+  /* ── Metrics ───────────────────────────────────── */
 
-  .stat-value {
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-
-  .stat-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .stat-note {
-    margin-top: 6px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .alert-strip,
   .metrics-sections {
     display: grid;
     gap: 16px;
   }
 
-  .alert-grid,
   .metric-grid {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 12px;
   }
 
-  .alert-grid {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  }
-
-  .alert-card,
   .metric-card {
     padding: 16px;
-    border-radius: 18px;
-    border: 1px solid rgba(145, 160, 179, 0.12);
-    background: rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
     display: grid;
     gap: 10px;
   }
 
-  .alert-card {
-    align-content: start;
-  }
-
-  .alert-card__title,
-  .metric-card__label {
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    font-weight: 700;
-  }
-
-  .alert-card__detail,
-  .metric-card__secondary {
-    color: #d9e4ef;
-    font-size: 13px;
-  }
-
-  .alert-card__detail {
-    line-height: 1.45;
-  }
-
-  .alert-card--ok,
   .metric-card--good {
     border-color: rgba(70, 212, 131, 0.22);
-    background: linear-gradient(180deg, rgba(70, 212, 131, 0.08), rgba(255, 255, 255, 0.02));
   }
 
-  .alert-card--warning,
   .metric-card--warning {
     border-color: rgba(240, 196, 90, 0.26);
-    background: linear-gradient(180deg, rgba(240, 196, 90, 0.08), rgba(255, 255, 255, 0.02));
   }
 
-  .alert-card--danger,
   .metric-card--danger {
     border-color: rgba(255, 120, 112, 0.28);
-    background: linear-gradient(180deg, rgba(255, 120, 112, 0.08), rgba(255, 255, 255, 0.02));
   }
 
   .metric-card--info {
     border-color: rgba(114, 208, 255, 0.2);
   }
 
-  .metric-section {
+  .metric-card.hidden-metric {
+    display: none;
+  }
+
+  .metric-card.hidden-metric.show-all {
     display: grid;
-    gap: 14px;
-  }
-
-  .metric-section__header {
-    display: grid;
-    gap: 6px;
-  }
-
-  .metric-section__header h3 {
-    font-size: 18px;
-  }
-
-  .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
   }
 
   .metric-card__top {
@@ -400,15 +341,23 @@
     gap: 10px;
   }
 
+  .metric-card__label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
   .metric-card__value {
-    font-size: clamp(1.35rem, 2.6vw, 2rem);
+    font-size: 22px;
     font-weight: 750;
     line-height: 1;
     letter-spacing: -0.03em;
   }
 
   .metric-card__tone {
-    padding: 4px 9px;
+    padding: 3px 8px;
     border-radius: 999px;
     font-size: 11px;
     text-transform: uppercase;
@@ -423,11 +372,22 @@
     gap: 8px;
   }
 
+  .metric-card__secondary {
+    color: #d9e4ef;
+    font-size: 13px;
+  }
+
   .metric-card__definition,
   .metric-card__formula {
     font-size: 12px;
     color: var(--muted);
     line-height: 1.5;
+  }
+
+  .metric-card__definition strong,
+  .metric-card__formula strong {
+    color: var(--text);
+    font-weight: 600;
   }
 
   .metric-card__breakdown {
@@ -441,8 +401,8 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 12px;
     align-items: start;
-    padding: 10px 12px;
-    border-radius: 14px;
+    padding: 8px 10px;
+    border-radius: 10px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(145, 160, 179, 0.08);
   }
@@ -450,7 +410,7 @@
   .metric-breakdown-row__label {
     font-size: 12px;
     font-weight: 700;
-    color: #eef4fb;
+    color: var(--text);
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
@@ -458,8 +418,8 @@
   .metric-breakdown-row__value {
     font-size: 12px;
     font-weight: 700;
-    color: #eef4fb;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
   .metric-breakdown-row__note {
@@ -469,25 +429,100 @@
     line-height: 1.45;
   }
 
-  .metric-card__definition strong,
-  .metric-card__formula strong {
-    color: var(--text);
-    font-weight: 600;
+  .metric-section {
+    display: grid;
+    gap: 14px;
   }
 
-  .lane-grid {
+  .metric-section__header {
+    display: grid;
+    gap: 4px;
+  }
+
+  .metric-section__header h3 {
+    font-size: 16px;
+  }
+
+  .metric-toggle-btn {
+    border: 1px solid var(--border);
+    background: rgba(114, 208, 255, 0.06);
+    color: var(--muted);
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  .metric-toggle-btn:hover {
+    background: rgba(114, 208, 255, 0.14);
+    color: var(--text);
+  }
+
+  /* ── Alerts ────────────────────────────────────── */
+
+  .alert-strip {
+    display: grid;
+    gap: 16px;
+  }
+
+  .alert-grid {
+    display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    align-items: start;
+    gap: 12px;
+  }
+
+  .alert-card {
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: grid;
+    gap: 8px;
+    align-content: start;
+  }
+
+  .alert-card__title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .alert-card__detail {
+    color: #d9e4ef;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .alert-card--ok {
+    border-color: rgba(70, 212, 131, 0.22);
+  }
+
+  .alert-card--warning {
+    border-color: rgba(240, 196, 90, 0.26);
+  }
+
+  .alert-card--danger {
+    border-color: rgba(255, 120, 112, 0.28);
+  }
+
+  /* ── Lanes ─────────────────────────────────────── */
+
+  .lane-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
   }
 
   .lane-card {
-    padding: 16px;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(145, 160, 179, 0.12);
+    padding: 14px;
+    border-radius: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     display: grid;
-    gap: 10px;
-    min-width: 0;
+    gap: 8px;
   }
 
   .lane-card__top {
@@ -495,49 +530,226 @@
     align-items: start;
     justify-content: space-between;
     gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .lane-card__top > div {
-    min-width: 0;
-    flex: 1 1 220px;
   }
 
   .lane-card h3 {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
-    overflow-wrap: anywhere;
   }
 
   .lane-card__summary {
     color: #d7e0ea;
     font-size: 13px;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
   }
 
   .lane-card__decision {
-    padding-top: 10px;
-    border-top: 1px solid rgba(145, 160, 179, 0.12);
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
     display: grid;
     gap: 4px;
-    min-width: 0;
   }
 
-  .lane-card__meta {
-    min-width: 0;
-    overflow-wrap: anywhere;
+  /* ── Role sections ─────────────────────────────── */
+
+  .role-stack {
+    display: grid;
+    gap: 14px;
+  }
+
+  .role-section .card-header {
+    align-items: start;
+    justify-content: space-between;
+  }
+
+  .role-title {
+    display: grid;
+    gap: 4px;
+  }
+
+  .role-title h2 {
+    font-size: 16px;
+  }
+
+  .role-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr);
+    gap: 16px;
+  }
+
+  .role-main,
+  .role-side {
+    display: grid;
+    gap: 14px;
+  }
+
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .overview-box,
+  .decision-box,
+  .runtime-box {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    display: grid;
+    gap: 8px;
+  }
+
+  .overview-box strong,
+  .decision-box strong,
+  .runtime-box strong {
+    font-size: 13px;
+  }
+
+  .field-list {
+    display: grid;
+    gap: 6px;
+  }
+
+  .field-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+
+  .field-label {
+    min-width: 130px;
+    color: var(--muted);
+  }
+
+  .field-value {
+    color: var(--text);
+    flex: 1;
+  }
+
+  /* ── Tabs ──────────────────────────────────────── */
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .tab {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .tab.active {
+    color: var(--text);
+    border-color: rgba(114, 208, 255, 0.28);
+    background: rgba(114, 208, 255, 0.12);
+  }
+
+  .tab-content {
+    display: none;
+    margin-top: 14px;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
     word-break: break-word;
+    color: #cfd9e4;
+    max-height: 420px;
+    overflow-y: auto;
   }
 
-  .lane-card .status-badge {
-    flex: 0 0 auto;
+  .decision-box pre,
+  .message-box pre {
+    max-height: none;
   }
+
+  /* ── Status badges ─────────────────────────────── */
+
+  .status-badge,
+  .usage-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .status-working { background: rgba(70, 212, 131, 0.14); color: var(--green); }
+  .status-blocked { background: rgba(255, 120, 112, 0.14); color: var(--red); }
+  .status-done { background: rgba(77, 134, 255, 0.14); color: #8eb1ff; }
+  .status-ready-for-review { background: rgba(240, 196, 90, 0.15); color: var(--yellow); }
+  .status-monitoring { background: rgba(199, 169, 255, 0.16); color: var(--purple); }
+  .status-unknown { background: rgba(145, 160, 179, 0.18); color: var(--muted); }
+
+  .usage-ok { background: rgba(70, 212, 131, 0.14); color: var(--green); }
+  .usage-warning { background: rgba(240, 196, 90, 0.15); color: var(--yellow); }
+  .usage-compact { background: rgba(255, 120, 112, 0.14); color: var(--red); }
+
+  /* ── Support / Config section ──────────────────── */
+
+  .support-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+    gap: 16px;
+  }
+
+  .support-stack {
+    display: grid;
+    gap: 16px;
+  }
+
+  .config-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .config-tab {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .config-tab.active {
+    color: var(--text);
+    border-color: rgba(114, 208, 255, 0.28);
+    background: rgba(114, 208, 255, 0.12);
+  }
+
+  .config-pane {
+    display: none;
+  }
+
+  .config-pane.active {
+    display: block;
+  }
+
+  /* ── Forms / Settings ──────────────────────────── */
 
   .feedback-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+    grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
     gap: 16px;
   }
 
@@ -548,11 +760,11 @@
 
   .settings-agent-row {
     display: grid;
-    grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+    grid-template-columns: minmax(120px, 200px) minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
     align-items: center;
     padding: 10px 12px;
-    border-radius: 14px;
+    border-radius: 10px;
     border: 1px solid rgba(145, 160, 179, 0.1);
     background: rgba(255, 255, 255, 0.02);
   }
@@ -561,11 +773,6 @@
     font-size: 13px;
     font-weight: 700;
     color: #dbe5ef;
-  }
-
-  .settings-agent-controls {
-    display: grid;
-    gap: 6px;
   }
 
   .settings-note {
@@ -593,7 +800,7 @@
   }
 
   .feedback-field label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -603,16 +810,17 @@
   .feedback-textarea,
   .feedback-select {
     width: 100%;
-    border-radius: 14px;
+    border-radius: 8px;
     border: 1px solid rgba(145, 160, 179, 0.16);
     background: rgba(5, 10, 16, 0.45);
     color: var(--text);
-    padding: 11px 12px;
+    padding: 9px 10px;
     font: inherit;
+    font-size: 13px;
   }
 
   .feedback-textarea {
-    min-height: 150px;
+    min-height: 140px;
     resize: vertical;
     line-height: 1.5;
   }
@@ -649,13 +857,17 @@
 
   .feedback-submit {
     border: 1px solid rgba(114, 208, 255, 0.24);
-    background: linear-gradient(135deg, rgba(77, 134, 255, 0.22), rgba(114, 208, 255, 0.16));
+    background: rgba(114, 208, 255, 0.12);
     color: var(--text);
-    border-radius: 999px;
-    padding: 10px 16px;
+    border-radius: 8px;
+    padding: 8px 16px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
+  }
+
+  .feedback-submit:hover {
+    background: rgba(114, 208, 255, 0.22);
   }
 
   .feedback-submit:disabled {
@@ -686,10 +898,10 @@
   }
 
   .feedback-entry {
-    padding: 14px 16px;
-    border-radius: 16px;
+    padding: 12px 14px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(145, 160, 179, 0.12);
+    border: 1px solid var(--border);
   }
 
   .feedback-entry__top {
@@ -704,7 +916,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
   }
 
@@ -720,153 +932,7 @@
     color: var(--muted);
   }
 
-  .status-badge,
-  .usage-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .status-working { background: rgba(70, 212, 131, 0.14); color: var(--green); }
-  .status-blocked { background: rgba(255, 120, 112, 0.14); color: var(--red); }
-  .status-done { background: rgba(77, 134, 255, 0.14); color: #8eb1ff; }
-  .status-ready-for-review { background: rgba(240, 196, 90, 0.15); color: var(--yellow); }
-  .status-monitoring { background: rgba(199, 169, 255, 0.16); color: var(--purple); }
-  .status-unknown { background: rgba(145, 160, 179, 0.18); color: var(--muted); }
-
-  .usage-ok { background: rgba(70, 212, 131, 0.14); color: var(--green); }
-  .usage-warning { background: rgba(240, 196, 90, 0.15); color: var(--yellow); }
-  .usage-compact { background: rgba(255, 120, 112, 0.14); color: var(--red); }
-
-  .role-section .card-header {
-    align-items: start;
-    justify-content: space-between;
-  }
-
-  .role-title {
-    display: grid;
-    gap: 6px;
-  }
-
-  .role-title h2 {
-    font-size: 18px;
-  }
-
-  .role-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
-    gap: 16px;
-  }
-
-  .role-main,
-  .role-side {
-    display: grid;
-    gap: 14px;
-  }
-
-  .overview-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .overview-box,
-  .decision-box,
-  .runtime-box {
-    padding: 14px 16px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(145, 160, 179, 0.12);
-    display: grid;
-    gap: 8px;
-  }
-
-  .overview-box strong,
-  .decision-box strong,
-  .runtime-box strong {
-    font-size: 13px;
-  }
-
-  .field-list {
-    display: grid;
-    gap: 8px;
-  }
-
-  .field-row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    font-size: 13px;
-  }
-
-  .field-label {
-    min-width: 140px;
-  }
-
-  .field-value {
-    color: var(--text);
-    flex: 1;
-  }
-
-  .tabs {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 4px;
-  }
-
-  .tab {
-    border: 1px solid rgba(145, 160, 179, 0.12);
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--muted);
-    border-radius: 999px;
-    padding: 8px 12px;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .tab.active {
-    color: var(--text);
-    border-color: rgba(114, 208, 255, 0.28);
-    background: rgba(114, 208, 255, 0.12);
-  }
-
-  .tab-content {
-    display: none;
-    margin-top: 14px;
-  }
-
-  .tab-content.active {
-    display: block;
-  }
-
-  pre {
-    font-size: 12px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #cfd9e4;
-    max-height: 420px;
-    overflow-y: auto;
-  }
-
-  .decision-box pre,
-  .message-box pre {
-    max-height: none;
-  }
-
-  .support-grid {
-    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  }
-
-  .support-stack {
-    display: grid;
-    gap: 16px;
-  }
+  /* ── Tables ────────────────────────────────────── */
 
   .table-wrap { overflow-x: auto; }
 
@@ -878,8 +944,8 @@
 
   .metrics-table th,
   .metrics-table td {
-    padding: 8px 10px;
-    border-top: 1px solid rgba(145, 160, 179, 0.12);
+    padding: 6px 10px;
+    border-top: 1px solid var(--border);
     text-align: left;
     vertical-align: top;
   }
@@ -894,8 +960,9 @@
     text-align: right;
   }
 
+  /* ── Responsive ────────────────────────────────── */
+
   @media (max-width: 1120px) {
-    .summary-grid,
     .feedback-grid,
     .role-layout,
     .support-grid {
@@ -904,15 +971,22 @@
   }
 
   @media (max-width: 820px) {
-    .stat-grid,
     .overview-grid,
     .feedback-form__grid {
       grid-template-columns: 1fr;
     }
 
+    .settings-agent-row {
+      grid-template-columns: 1fr;
+    }
+
     .container,
     .header__inner {
-      padding: 18px;
+      padding: 16px;
+    }
+
+    .quick-stats {
+      flex-direction: column;
     }
   }
 </style>
@@ -923,8 +997,8 @@
     <div class="brand">
       <div class="brand__mark">FC</div>
       <div>
-        <h1>FleetClaw Dashboard</h1>
-        <p id="header-subtitle">Project status review</p>
+        <h1>FleetClaw</h1>
+        <p id="header-subtitle">Multi-agent coordination</p>
       </div>
     </div>
     <span class="tag" id="project-name">loading...</span>
@@ -935,9 +1009,11 @@
 </header>
 
 <main class="container">
-  <section id="summary"></section>
-  <section id="role-sections" class="role-stack"></section>
-  <section id="support"></section>
+  <section id="fleet-overview"></section>
+  <section id="role-snapshot"></section>
+  <section id="health-metrics"></section>
+  <section id="fleet-lanes" class="role-stack"></section>
+  <section id="config-support"></section>
 </main>
 
 <script>
@@ -954,6 +1030,7 @@ let feedbackSubmitting = false;
 let runtimeSettingsDraft = null;
 let runtimeSettingsNotice = null;
 let runtimeSettingsSubmitting = false;
+let showAllMetrics = false;
 
 async function fetchAll() {
   const response = await fetch('/api/dashboard');
@@ -1093,6 +1170,13 @@ function formatFeedbackStatus(status) {
   return value;
 }
 
+function formatControlPlaneStatus(status) {
+  const value = String(status || '').toLowerCase();
+  if (!value) return 'unknown';
+  if (value === 'dispatch-error') return 'dispatch error';
+  return value;
+}
+
 function renderFeedbackEntries(entries) {
   if (!entries || !entries.length) {
     return '<div class="subtle">No human feedback submitted from the dashboard yet.</div>';
@@ -1121,13 +1205,6 @@ function renderFeedbackEntries(entries) {
       `).join('')}
     </div>
   `;
-}
-
-function formatControlPlaneStatus(status) {
-  const value = String(status || '').toLowerCase();
-  if (!value) return 'unknown';
-  if (value === 'dispatch-error') return 'dispatch error';
-  return value;
 }
 
 function renderControlPlaneEntries(entries) {
@@ -1165,161 +1242,6 @@ function renderControlPlaneEntries(entries) {
         </article>
       `).join('')}
     </div>
-  `;
-}
-
-function renderFeedbackForm(projectData, feedback) {
-  const targets = feedback?.targets || [];
-  const noticeClass = feedbackNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
-    : feedbackNotice?.kind === 'ok' ? 'feedback-status feedback-status--ok'
-    : 'feedback-status';
-
-  return `
-    <div class="feedback-grid">
-      <section class="card">
-        <div class="card-header"><h2>Review Feedback</h2></div>
-        <div class="card-body">
-          <form class="feedback-form" data-feedback-form>
-            <div class="feedback-form__grid">
-              <div class="feedback-field">
-                <label for="feedback-target">Route to</label>
-                <select id="feedback-target" name="target" class="feedback-select">
-                  ${targets.map((target) => `
-                    <option value="${esc(target.id)}" ${feedbackDraft.target === target.id ? 'selected' : ''}>
-                      ${esc(target.label)}${target.recommended ? ' (recommended)' : ''}
-                    </option>
-                  `).join('')}
-                </select>
-              </div>
-              <div class="feedback-field">
-                <label for="feedback-severity">Severity</label>
-                <select id="feedback-severity" name="severity" class="feedback-select">
-                  <option value="note" ${feedbackDraft.severity === 'note' ? 'selected' : ''}>Note</option>
-                  <option value="issue" ${feedbackDraft.severity === 'issue' ? 'selected' : ''}>Issue</option>
-                  <option value="blocking" ${feedbackDraft.severity === 'blocking' ? 'selected' : ''}>Blocking</option>
-                </select>
-              </div>
-            </div>
-            <div class="feedback-field">
-              <label for="feedback-surface">Review surface</label>
-              <input id="feedback-surface" name="surface" class="feedback-input" value="${esc(feedbackDraft.surface || projectData.review?.url || '')}" placeholder="http://127.0.0.1:4273/">
-            </div>
-            <div class="feedback-field">
-              <label for="feedback-message">Feedback</label>
-              <textarea id="feedback-message" name="message" class="feedback-textarea" placeholder="Describe the bug, repro steps, expected behavior, and whether it blocks acceptance.">${esc(feedbackDraft.message)}</textarea>
-            </div>
-            <label class="feedback-checkbox">
-              <input type="checkbox" name="blocksAcceptance" ${feedbackDraft.blocksAcceptance ? 'checked' : ''}>
-              <span>Treat this as blocking review feedback</span>
-            </label>
-            <div class="feedback-actions">
-              <div>
-                <div class="feedback-note">Default route is the supervisor, so human feedback stays inside the normal coordination loop.</div>
-                <div class="${noticeClass}" data-feedback-status>${esc(feedbackNotice?.text || '')}</div>
-              </div>
-              <button type="submit" class="feedback-submit" ${feedbackSubmitting ? 'disabled' : ''}>${feedbackSubmitting ? 'Sending...' : 'Send Feedback'}</button>
-            </div>
-          </form>
-        </div>
-      </section>
-      <section class="card">
-        <div class="card-header"><h2>Recent Human Feedback</h2></div>
-        <div class="card-body">
-          ${renderFeedbackEntries(feedback?.entries || [])}
-        </div>
-      </section>
-    </div>
-  `;
-}
-
-function buildRuntimeSettingsDraft(projectData) {
-  const settings = projectData.runtimeSettings || {};
-  return {
-    supervisorModel: settings.supervisor?.model || projectData.supervisor?.model || '',
-    checkIntervalMins: String(settings.supervisor?.checkIntervalMins ?? projectData.supervisor?.checkInterval ?? ''),
-    supervisorThinking: settings.supervisor?.thinking || projectData.supervisor?.thinking || '',
-    restartGateway: false,
-    agents: (settings.agents || projectData.agents || []).map((agent) => ({
-      id: agent.id,
-      model: agent.model || '',
-      thinking: agent.thinking || '',
-    })),
-  };
-}
-
-function renderRuntimeSettingsForm(projectData) {
-  const settings = projectData.runtimeSettings || { supervisor: {}, agents: [], availableModels: [], availableThinkings: [] };
-  const noticeClass = runtimeSettingsNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
-    : runtimeSettingsNotice?.kind === 'ok' ? 'feedback-status feedback-status--ok'
-    : 'feedback-status';
-
-  return `
-    <section class="card">
-      <div class="card-header"><h2>Runtime Settings</h2></div>
-      <div class="card-body">
-        <form class="feedback-form" data-runtime-settings-form>
-          <div class="feedback-form__grid">
-            <div class="feedback-field">
-              <label for="runtime-supervisor-model">Supervisor model</label>
-              <input id="runtime-supervisor-model" name="supervisorModel" class="feedback-input" list="runtime-model-options" value="${esc(runtimeSettingsDraft?.supervisorModel || '')}" placeholder="openai-codex/gpt-5.4">
-            </div>
-            <div class="feedback-field">
-              <label for="runtime-check-interval">Check every (minutes)</label>
-              <input id="runtime-check-interval" type="number" min="1" max="1440" step="1" name="checkIntervalMins" class="feedback-input" value="${esc(runtimeSettingsDraft?.checkIntervalMins || '')}" placeholder="10">
-            </div>
-          </div>
-          <div class="feedback-field">
-            <label for="runtime-supervisor-thinking">Supervisor thinking</label>
-            <input id="runtime-supervisor-thinking" name="supervisorThinking" class="feedback-input" list="runtime-thinking-options" value="${esc(runtimeSettingsDraft?.supervisorThinking || '')}" placeholder="xhigh">
-          </div>
-          <div class="feedback-field">
-            <label>Lane models</label>
-            <div class="settings-agent-grid">
-              ${(runtimeSettingsDraft?.agents || []).map((agent) => `
-                <div class="settings-agent-row">
-                  <div class="settings-agent-name">${esc(agent.id)}</div>
-                  <div class="settings-agent-controls">
-                    <input
-                      class="feedback-input"
-                      list="runtime-model-options"
-                      data-agent-model-input
-                      data-agent-id="${esc(agent.id)}"
-                      value="${esc(agent.model || '')}"
-                      placeholder="openai-codex/gpt-5.4"
-                    >
-                    <input
-                      class="feedback-input"
-                      list="runtime-thinking-options"
-                      data-agent-thinking-input
-                      data-agent-id="${esc(agent.id)}"
-                      value="${esc(agent.thinking || '')}"
-                      placeholder="xhigh"
-                    >
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-          <label class="feedback-checkbox">
-            <input type="checkbox" name="restartGateway" ${runtimeSettingsDraft?.restartGateway ? 'checked' : ''}>
-            <span>Restart gateway after apply so the next queued turn uses the refreshed agent registry</span>
-          </label>
-          <div class="feedback-actions">
-            <div>
-              <div class="settings-note">${esc(settings.note || 'Settings apply to the next cron cycle and future turns. Use gateway restart only when you want to force the next queued turn onto the new config immediately.')}</div>
-              <div class="${noticeClass}" data-runtime-settings-status>${esc(runtimeSettingsNotice?.text || '')}</div>
-            </div>
-            <button type="submit" class="feedback-submit" ${runtimeSettingsSubmitting ? 'disabled' : ''}>${runtimeSettingsSubmitting ? 'Applying...' : 'Apply Settings'}</button>
-          </div>
-          <datalist id="runtime-model-options">
-            ${(settings.availableModels || []).map((model) => `<option value="${esc(model)}"></option>`).join('')}
-          </datalist>
-          <datalist id="runtime-thinking-options">
-            ${(settings.availableThinkings || []).map((thinking) => `<option value="${esc(thinking)}"></option>`).join('')}
-          </datalist>
-        </form>
-      </div>
-    </section>
   `;
 }
 
@@ -1470,86 +1392,97 @@ function alertLevelClass(level) {
   return 'alert-card--ok';
 }
 
-function renderQuickStat(label, value, note) {
-  return `
-    <div class="stat">
-      <div class="stat-value">${esc(value || '-')}</div>
-      <div class="stat-label">${esc(label)}</div>
-      ${note ? `<div class="stat-note">${esc(note)}</div>` : ''}
-    </div>
-  `;
-}
-
 function renderAlertStrip(analytics) {
   const alerts = analytics?.alerts || [];
   if (!alerts.length) return '';
 
   return `
-    <section class="card">
-      <div class="card-header"><h2>Alert Strip</h2></div>
-      <div class="card-body">
-        <div class="alert-grid">
-          ${alerts.map((alert) => `
-            <article class="alert-card ${alertLevelClass(alert.level)}">
-              <div class="alert-card__title">${esc(alert.title || 'Alert')}</div>
-              <div class="alert-card__detail">${esc(alert.detail || '')}</div>
-            </article>
-          `).join('')}
-        </div>
+    <div class="alert-strip">
+      <div class="alert-grid">
+        ${alerts.map((alert) => `
+          <article class="alert-card ${alertLevelClass(alert.level)}">
+            <div class="alert-card__title">${esc(alert.title || 'Alert')}</div>
+            <div class="alert-card__detail">${esc(alert.detail || '')}</div>
+          </article>
+        `).join('')}
       </div>
-    </section>
+    </div>
   `;
 }
+
+const ESSENTIAL_METRIC_IDS = new Set([
+  'project-tokens', 'supervisor-tokens-pct', 'push-vs-poll',
+  'commits-today', 'active-agents', 'review-latency',
+]);
 
 function renderMetricSections(analytics) {
   const sections = analytics?.sections || [];
   if (!sections.length) return '';
 
-  return `
-    <section class="metrics-sections">
-      ${sections.map((section) => `
-        <article class="card metric-section">
-          <div class="card-header">
-            <div class="metric-section__header">
-              <div class="eyebrow">Operational indicators</div>
-              <h3>${esc(section.title || 'Metrics')}</h3>
-              <div class="subtle">${esc(section.subtitle || '')}</div>
+  let hasHiddenMetrics = false;
+
+  const sectionsHtml = sections.map((section) => {
+    const allMetrics = section.metrics || [];
+
+    const metricsHtml = allMetrics.map((metric, idx) => {
+      const isEssential = ESSENTIAL_METRIC_IDS.has(metric.id) || idx === 0;
+      const hiddenClass = isEssential ? '' : 'hidden-metric';
+      if (!isEssential) hasHiddenMetrics = true;
+
+      return `
+        <article class="metric-card ${metricToneClass(metric.tone)} ${hiddenClass} ${showAllMetrics && !isEssential ? 'show-all' : ''}" ${!isEssential ? 'data-extra-metric' : ''}>
+          <div class="metric-card__top">
+            <div>
+              <div class="metric-card__label">${esc(metric.label || 'Metric')}</div>
+              <div class="metric-card__value">${esc(metric.value || '-')}</div>
             </div>
+            <span class="metric-card__tone">${esc(metric.tone || 'info')}</span>
           </div>
-          <div class="card-body">
-            <div class="metric-grid">
-              ${(section.metrics || []).map((metric) => `
-                <article class="metric-card ${metricToneClass(metric.tone)}">
-                  <div class="metric-card__top">
-                    <div>
-                      <div class="metric-card__label">${esc(metric.label || 'Metric')}</div>
-                      <div class="metric-card__value">${esc(metric.value || '-')}</div>
-                    </div>
-                    <span class="metric-card__tone">${esc(metric.tone || 'info')}</span>
+          <div class="metric-card__body">
+            ${metric.secondary ? `<div class="metric-card__secondary">${esc(metric.secondary)}</div>` : ''}
+            ${Array.isArray(metric.breakdown) && metric.breakdown.length ? `
+              <div class="metric-card__breakdown">
+                ${metric.breakdown.map((item) => `
+                  <div class="metric-breakdown-row">
+                    <div class="metric-breakdown-row__label">${esc(item.label || '-')}</div>
+                    <div class="metric-breakdown-row__value">${esc(item.value || '-')}</div>
+                    ${item.note ? `<div class="metric-breakdown-row__note">${esc(item.note)}</div>` : ''}
                   </div>
-                  <div class="metric-card__body">
-                    ${metric.secondary ? `<div class="metric-card__secondary">${esc(metric.secondary)}</div>` : ''}
-                    ${Array.isArray(metric.breakdown) && metric.breakdown.length ? `
-                      <div class="metric-card__breakdown">
-                        ${metric.breakdown.map((item) => `
-                          <div class="metric-breakdown-row">
-                            <div class="metric-breakdown-row__label">${esc(item.label || '-')}</div>
-                            <div class="metric-breakdown-row__value">${esc(item.value || '-')}</div>
-                            ${item.note ? `<div class="metric-breakdown-row__note">${esc(item.note)}</div>` : ''}
-                          </div>
-                        `).join('')}
-                      </div>
-                    ` : ''}
-                    ${metric.definition ? `<div class="metric-card__definition"><strong>Definition</strong> ${esc(metric.definition)}</div>` : ''}
-                    ${metric.formula ? `<div class="metric-card__formula"><strong>Formula</strong> ${esc(metric.formula)}</div>` : ''}
-                  </div>
-                </article>
-              `).join('')}
-            </div>
+                `).join('')}
+              </div>
+            ` : ''}
+            ${metric.definition ? `<div class="metric-card__definition"><strong>Definition</strong> ${esc(metric.definition)}</div>` : ''}
+            ${metric.formula ? `<div class="metric-card__formula"><strong>Formula</strong> ${esc(metric.formula)}</div>` : ''}
           </div>
         </article>
-      `).join('')}
-    </section>
+      `;
+    }).join('');
+
+    return `
+      <article class="card metric-section">
+        <div class="card-header">
+          <div class="metric-section__header">
+            <div class="eyebrow">Operational indicators</div>
+            <h3>${esc(section.title || 'Metrics')}</h3>
+            <div class="subtle">${esc(section.subtitle || '')}</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="metric-grid">${metricsHtml}</div>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  const toggleBtn = hasHiddenMetrics
+    ? `<button class="metric-toggle-btn" data-metric-toggle>${showAllMetrics ? 'Show fewer metrics' : 'Show all metrics'}</button>`
+    : '';
+
+  return `
+    <div class="metrics-sections">
+      ${sectionsHtml}
+      ${toggleBtn}
+    </div>
   `;
 }
 
@@ -1616,7 +1549,7 @@ function renderAgentSection(agent) {
                 </div>
               </div>
               <div class="overview-box">
-                <strong>Current review state</strong>
+                <strong>Review state</strong>
                 <div class="field-list">
                   <div class="field-row"><span class="field-label">Tests</span><span class="field-value">${esc(agent.statusFields.tests || '-')}</span></div>
                   <div class="field-row"><span class="field-label">Decision needed</span><span class="field-value">${esc(agent.statusFields['needs supervisor decision'] || 'no')}</span></div>
@@ -1706,15 +1639,170 @@ function renderSupervisorSection(supervisor, projectData, feedback) {
             </div>
             ${renderTabs('supervisor', tabs)}
           </div>
-          <div class="role-side">
-            <div class="decision-box">
-              <strong>Latest supervision note</strong>
-              <pre>${esc(supervisor.latestMemory || 'No memory logs yet')}</pre>
-            </div>
-          </div>
         </div>
       </div>
     </section>
+  `;
+}
+
+function buildRuntimeSettingsDraft(projectData) {
+  const settings = projectData.runtimeSettings || {};
+  const supervisor = settings.supervisor || {};
+  const agents = (settings.agents || (projectData.agents || [])).map((a) => ({
+    id: a.id || '',
+    model: a.model || '',
+    thinking: a.thinking || '',
+  }));
+  return {
+    supervisorModel: runtimeSettingsDraft?.supervisorModel || supervisor.model || '',
+    supervisorThinking: runtimeSettingsDraft?.supervisorThinking || supervisor.thinking || '',
+    checkIntervalMins: runtimeSettingsDraft?.checkIntervalMins || String(supervisor.checkIntervalMins || 10),
+    restartGateway: runtimeSettingsDraft?.restartGateway || false,
+    agents,
+  };
+}
+
+function renderRuntimeSettingsForm(projectData) {
+  const settings = projectData.runtimeSettings || { supervisor: {}, agents: [], availableModels: [], availableThinkings: [] };
+  const availableModels = settings.availableModels || [];
+  const availableThinkings = settings.availableThinkings || [];
+  const noticeClass = runtimeSettingsNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
+    : runtimeSettingsNotice?.kind === 'ok' ? 'feedback-status feedback-status--ok'
+    : 'feedback-status';
+
+  return `
+    <section class="card">
+      <div class="card-header"><h2>Runtime Settings</h2></div>
+      <div class="card-body">
+        <form class="feedback-form" data-runtime-settings-form>
+          <div class="feedback-form__grid">
+            <div class="feedback-field">
+              <label for="runtime-supervisor-model">Supervisor model</label>
+              <select id="runtime-supervisor-model" name="supervisorModel" class="feedback-select">
+                ${availableModels.length ? availableModels.map((model) => `
+                  <option value="${esc(model)}" ${(runtimeSettingsDraft?.supervisorModel || '') === model ? 'selected' : ''}>${esc(model)}</option>
+                `).join('') : `<option value="${esc(runtimeSettingsDraft?.supervisorModel || '')}">${esc(runtimeSettingsDraft?.supervisorModel || 'no models available')}</option>`}
+              </select>
+            </div>
+            <div class="feedback-field">
+              <label for="runtime-supervisor-thinking">Supervisor thinking</label>
+              <select id="runtime-supervisor-thinking" name="supervisorThinking" class="feedback-select">
+                ${availableThinkings.length ? availableThinkings.map((t) => `
+                  <option value="${esc(t)}" ${(runtimeSettingsDraft?.supervisorThinking || '') === t ? 'selected' : ''}>${esc(t)}</option>
+                `).join('') : `<option value="${esc(runtimeSettingsDraft?.supervisorThinking || '')}">${esc(runtimeSettingsDraft?.supervisorThinking || 'no options')}</option>`}
+              </select>
+            </div>
+          </div>
+          <div class="feedback-field">
+            <label for="runtime-check-interval">Check every (minutes)</label>
+            <input id="runtime-check-interval" type="number" min="1" max="1440" step="1" name="checkIntervalMins" class="feedback-input" value="${esc(runtimeSettingsDraft?.checkIntervalMins || '')}" placeholder="10">
+          </div>
+          <div class="feedback-field">
+            <label>Lane models &amp; thinking</label>
+            <div class="settings-agent-grid">
+              ${(runtimeSettingsDraft?.agents || []).map((agent) => `
+                <div class="settings-agent-row">
+                  <div class="settings-agent-name">${esc(agent.id)}</div>
+                  <select
+                    class="feedback-select"
+                    data-agent-model-input
+                    data-agent-id="${esc(agent.id)}"
+                  >
+                    ${availableModels.length ? availableModels.map((model) => `
+                      <option value="${esc(model)}" ${(agent.model || '') === model ? 'selected' : ''}>${esc(model)}</option>
+                    `).join('') : `<option value="${esc(agent.model || '')}">${esc(agent.model || 'no models')}</option>`}
+                  </select>
+                  <select
+                    class="feedback-select"
+                    data-agent-thinking-input
+                    data-agent-id="${esc(agent.id)}"
+                  >
+                    ${availableThinkings.length ? availableThinkings.map((t) => `
+                      <option value="${esc(t)}" ${(agent.thinking || '') === t ? 'selected' : ''}>${esc(t)}</option>
+                    `).join('') : `<option value="${esc(agent.thinking || '')}">${esc(agent.thinking || 'no options')}</option>`}
+                  </select>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <label class="feedback-checkbox">
+            <input type="checkbox" name="restartGateway" ${runtimeSettingsDraft?.restartGateway ? 'checked' : ''}>
+            <span>Restart gateway after apply so the next queued turn uses the refreshed agent registry</span>
+          </label>
+          <div class="feedback-actions">
+            <div>
+              <div class="settings-note">${esc(settings.note || 'Settings apply to the next cron cycle and future turns. Use gateway restart only when you want to force the next queued turn onto the new config immediately.')}</div>
+              <div class="${noticeClass}" data-runtime-settings-status>${esc(runtimeSettingsNotice?.text || '')}</div>
+            </div>
+            <button type="submit" class="feedback-submit" ${runtimeSettingsSubmitting ? 'disabled' : ''}>${runtimeSettingsSubmitting ? 'Applying...' : 'Apply Settings'}</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  `;
+}
+
+function renderFeedbackForm(projectData, feedback) {
+  const targets = feedback?.targets || [];
+  const noticeClass = feedbackNotice?.kind === 'error' ? 'feedback-status feedback-status--error'
+    : feedbackNotice?.kind === 'ok' ? 'feedback-status feedback-status--ok'
+    : 'feedback-status';
+
+  return `
+    <div class="feedback-grid">
+      <section class="card">
+        <div class="card-header"><h2>Review Feedback</h2></div>
+        <div class="card-body">
+          <form class="feedback-form" data-feedback-form>
+            <div class="feedback-form__grid">
+              <div class="feedback-field">
+                <label for="feedback-target">Route to</label>
+                <select id="feedback-target" name="target" class="feedback-select">
+                  ${targets.map((target) => `
+                    <option value="${esc(target.id)}" ${feedbackDraft.target === target.id ? 'selected' : ''}>
+                      ${esc(target.label)}${target.recommended ? ' (recommended)' : ''}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+              <div class="feedback-field">
+                <label for="feedback-severity">Severity</label>
+                <select id="feedback-severity" name="severity" class="feedback-select">
+                  <option value="note" ${feedbackDraft.severity === 'note' ? 'selected' : ''}>Note</option>
+                  <option value="issue" ${feedbackDraft.severity === 'issue' ? 'selected' : ''}>Issue</option>
+                  <option value="blocking" ${feedbackDraft.severity === 'blocking' ? 'selected' : ''}>Blocking</option>
+                </select>
+              </div>
+            </div>
+            <div class="feedback-field">
+              <label for="feedback-surface">Review surface</label>
+              <input id="feedback-surface" name="surface" class="feedback-input" value="${esc(feedbackDraft.surface || projectData.review?.url || '')}" placeholder="http://127.0.0.1:4273/">
+            </div>
+            <div class="feedback-field">
+              <label for="feedback-message">Feedback</label>
+              <textarea id="feedback-message" name="message" class="feedback-textarea" placeholder="Describe the bug, repro steps, expected behavior, and whether it blocks acceptance.">${esc(feedbackDraft.message)}</textarea>
+            </div>
+            <label class="feedback-checkbox">
+              <input type="checkbox" name="blocksAcceptance" ${feedbackDraft.blocksAcceptance ? 'checked' : ''}>
+              <span>Treat this as blocking review feedback</span>
+            </label>
+            <div class="feedback-actions">
+              <div>
+                <div class="feedback-note">Default route is the supervisor, so human feedback stays inside the normal coordination loop.</div>
+                <div class="${noticeClass}" data-feedback-status>${esc(feedbackNotice?.text || '')}</div>
+              </div>
+              <button type="submit" class="feedback-submit" ${feedbackSubmitting ? 'disabled' : ''}>${feedbackSubmitting ? 'Sending...' : 'Send Feedback'}</button>
+            </div>
+          </form>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-header"><h2>Recent Human Feedback</h2></div>
+        <div class="card-body">
+          ${renderFeedbackEntries(feedback?.entries || [])}
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -1753,49 +1841,65 @@ function renderSupport(projectData, metrics, controlPlane) {
     : '<div class="subtle">No tracked file modifications.</div>';
 
   return `
-    <div class="support-grid">
-      <div class="support-stack">
-        <section class="card">
-          <div class="card-header"><h2>Context budget</h2></div>
-          <div class="card-body">
-            <div class="field-row"><span class="field-label">Instruction estimate</span><span class="field-value">${esc(metrics.markdown?.estimator || 'chars/4')} against ${fmtInt(metrics.markdown?.contextLimit || 0)} tokens</span></div>
-            <div class="field-row"><span class="field-label">Compaction threshold</span><span class="field-value">${fmtPct(metrics.live?.threshold || 0)}</span></div>
-            <div class="eyebrow" style="margin-top:12px;">Markdown read sets</div>
-            ${renderMarkdownTable(metrics.markdown?.rows || [])}
-            <div class="eyebrow" style="margin-top:16px;">Live session usage</div>
-            ${renderLiveTable(metrics.live?.rows || [])}
-          </div>
-        </section>
-      </div>
-      <div class="support-stack">
-        <section class="card">
-          <div class="card-header"><h2>Control plane</h2></div>
-          <div class="card-body">
-            <div class="field-row"><span class="field-label">Polling fallback</span><span class="field-value">${esc(String(projectData.protocol?.pollingFallback ?? true))}</span></div>
-            <div class="field-row"><span class="field-label">Agent -> supervisor budget</span><span class="field-value">${esc(String(projectData.protocol?.agentToSupervisorMaxTokens || 80))} tokens</span></div>
-            <div class="field-row"><span class="field-label">Supervisor -> agent budget</span><span class="field-value">${esc(String(projectData.protocol?.supervisorToAgentMaxTokens || 120))} tokens</span></div>
-            <div class="eyebrow" style="margin-top:12px;">Recent events</div>
-            ${renderControlPlaneEntries(controlPlane?.entries || [])}
-          </div>
-        </section>
-        <section class="card">
-          <div class="card-header"><h2>Git</h2></div>
-          <div class="card-body">
-            <pre>${esc(projectData.git.log || 'No git history yet')}</pre>
-            <div class="eyebrow" style="margin-top:12px;">Modified files (${changedFiles.length})</div>
-            ${changedHtml}
-            ${untrackedCount > 0 ? `<div class="table-note">Hidden untracked files: ${esc(String(untrackedCount))}</div>` : ''}
-          </div>
-        </section>
-      </div>
+    <div class="section-header">
+      <h2>Configuration &amp; Support</h2>
+      <p class="section-subtitle">Runtime settings, feedback, context budget, control plane, and git status</p>
+    </div>
+    <div class="config-tabs" data-config-tabs>
+      <button class="config-tab active" data-config-pane="settings">Runtime Settings</button>
+      <button class="config-tab" data-config-pane="feedback">Human Feedback</button>
+      <button class="config-tab" data-config-pane="budget">Context Budget</button>
+      <button class="config-tab" data-config-pane="control">Control Plane</button>
+      <button class="config-tab" data-config-pane="git">Git Status</button>
+    </div>
+    <div class="config-pane active" data-config-content="settings">
+      ${renderRuntimeSettingsForm({ ...projectData, agents: dashboardData.agents || [] })}
+    </div>
+    <div class="config-pane" data-config-content="feedback">
+      ${renderFeedbackForm(projectData, dashboardData.feedback || { entries: [], targets: [] })}
+    </div>
+    <div class="config-pane" data-config-content="budget">
+      <section class="card">
+        <div class="card-header"><h2>Context Budget</h2></div>
+        <div class="card-body">
+          <div class="field-row"><span class="field-label">Instruction estimate</span><span class="field-value">${esc(metrics.markdown?.estimator || 'chars/4')} against ${fmtInt(metrics.markdown?.contextLimit || 0)} tokens</span></div>
+          <div class="field-row"><span class="field-label">Compaction threshold</span><span class="field-value">${fmtPct(metrics.live?.threshold || 0)}</span></div>
+          <div class="eyebrow" style="margin-top:12px;">Markdown read sets</div>
+          ${renderMarkdownTable(metrics.markdown?.rows || [])}
+          <div class="eyebrow" style="margin-top:16px;">Live session usage</div>
+          ${renderLiveTable(metrics.live?.rows || [])}
+        </div>
+      </section>
+    </div>
+    <div class="config-pane" data-config-content="control">
+      <section class="card">
+        <div class="card-header"><h2>Control Plane</h2></div>
+        <div class="card-body">
+          <div class="field-row"><span class="field-label">Polling fallback</span><span class="field-value">${esc(String(projectData.protocol?.pollingFallback ?? true))}</span></div>
+          <div class="field-row"><span class="field-label">Agent -> supervisor budget</span><span class="field-value">${esc(String(projectData.protocol?.agentToSupervisorMaxTokens || 80))} tokens</span></div>
+          <div class="field-row"><span class="field-label">Supervisor -> agent budget</span><span class="field-value">${esc(String(projectData.protocol?.supervisorToAgentMaxTokens || 120))} tokens</span></div>
+          <div class="eyebrow" style="margin-top:12px;">Recent events</div>
+          ${renderControlPlaneEntries(controlPlane?.entries || [])}
+        </div>
+      </section>
+    </div>
+    <div class="config-pane" data-config-content="git">
+      <section class="card">
+        <div class="card-header"><h2>Git</h2></div>
+        <div class="card-body">
+          <pre>${esc(projectData.git.log || 'No git history yet')}</pre>
+          <div class="eyebrow" style="margin-top:12px;">Modified files (${changedFiles.length})</div>
+          ${changedHtml}
+          ${untrackedCount > 0 ? `<div class="table-note">Hidden untracked files: ${esc(String(untrackedCount))}</div>` : ''}
+        </div>
+      </section>
     </div>
   `;
 }
 
-function renderSummary(projectData, agents, supervisor, metrics, feedback) {
+function renderSummary(projectData, agents, supervisor, metrics) {
   const analytics = metrics.analytics || {};
   const overview = analytics.overview || {};
-  const sampleCount = analytics.snapshot?.sampleCount || 0;
   const projectStatus = projectData.status || { fields: {} };
   const projectStatusFields = projectStatus.fields || {};
   const projectState = projectStatusFields.state || 'monitoring';
@@ -1807,12 +1911,76 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
   const projectSupervisorCron = projectStatusFields['supervisor progress cron'] || 'unknown';
   const projectSupervisorReason = projectStatusFields['supervisor progress reason'] || '';
 
+  const activeLanes = agents.filter((a) => {
+    const s = (a.statusFields.state || '').toLowerCase();
+    return s === 'working' || s.includes('review');
+  }).length;
+  const blockedLanes = agents.filter((a) => (a.statusFields.state || '').toLowerCase() === 'blocked').length;
+  const acceptedToday = overview.acceptedToday ?? '-';
+  const avgContext = overview.avgContextPct != null ? fmtPct(overview.avgContextPct) : '-';
+
   const openclawLinks = [
-    projectData.gateway.openclawUrl ? `<a class="link-pill" href="${esc(projectData.gateway.openclawUrl)}" target="_blank">Open OpenClaw UI</a>` : '',
-    supervisor.sessionUrl ? `<a class="link-pill" href="${esc(supervisor.sessionUrl)}" target="_blank">Open supervisor chat</a>` : '',
-    projectData.review?.url ? `<a class="link-pill" href="${esc(projectData.review.url)}" target="_blank">Open review surface</a>` : '',
+    projectData.gateway.openclawUrl ? `<a class="link-pill" href="${esc(projectData.gateway.openclawUrl)}" target="_blank">OpenClaw UI</a>` : '',
+    supervisor.sessionUrl ? `<a class="link-pill" href="${esc(supervisor.sessionUrl)}" target="_blank">Supervisor chat</a>` : '',
+    projectData.review?.url ? `<a class="link-pill" href="${esc(projectData.review.url)}" target="_blank">Review surface</a>` : '',
   ].filter(Boolean).join('');
 
+  return `
+    <div class="section-header">
+      <h2>Fleet Overview</h2>
+      <p class="section-subtitle">Project status and quick health indicators</p>
+    </div>
+    <section class="card hero-card">
+      <div class="card-body">
+        <div class="hero-title">
+          <div class="eyebrow">Project</div>
+          <h2>${esc(projectData.name)}</h2>
+          <p>${esc(projectData.description || 'FleetClaw coordination dashboard for this project.')}</p>
+          ${renderStatusBadge(projectState)}
+        </div>
+
+        <div class="quick-stats">
+          <div class="quick-stat">
+            <div class="quick-stat__label">Active lanes</div>
+            <div class="quick-stat__value">${esc(String(activeLanes))}</div>
+          </div>
+          <div class="quick-stat">
+            <div class="quick-stat__label">Blocked</div>
+            <div class="quick-stat__value">${esc(String(blockedLanes))}</div>
+          </div>
+          <div class="quick-stat">
+            <div class="quick-stat__label">Accepted today</div>
+            <div class="quick-stat__value">${esc(String(acceptedToday))}</div>
+          </div>
+          <div class="quick-stat">
+            <div class="quick-stat__label">Avg context %</div>
+            <div class="quick-stat__value">${esc(avgContext)}</div>
+          </div>
+        </div>
+
+        <div class="project-status-panel">
+          <div class="project-status-top">
+            <span class="status-badge ${projectSupervisorCron === 'disabled' ? 'status-done' : (projectSupervisorCron === 'enabled' ? 'status-monitoring' : 'status-unknown')}">supervisor cron ${esc(projectSupervisorCron)}</span>
+            <span class="subtle">${esc(projectStatus.lastUpdatedDisplay || '-')}</span>
+          </div>
+          <div class="project-status-summary">${esc(projectSummary)}</div>
+          <div class="field-list">
+            <div class="field-row"><span class="field-label">Completed work</span><span class="field-value">${esc(projectCompletedWork)}</span></div>
+            <div class="field-row"><span class="field-label">Next action</span><span class="field-value">${esc(projectNextAction)}</span></div>
+            <div class="field-row"><span class="field-label">Where to review</span><span class="field-value">${projectReviewUrl && projectReviewUrl !== '-' ? `<a href="${esc(projectReviewUrl)}" target="_blank">${esc(projectReviewUrl)}</a>` : '-'}</span></div>
+            <div class="field-row"><span class="field-label">Review command</span><span class="field-value mono">${esc(projectReviewCommand)}</span></div>
+            <div class="field-row"><span class="field-label">Supervisor status</span><span class="field-value">${esc(projectSupervisorReason || 'Progress cron state is warming up.')}</span></div>
+          </div>
+        </div>
+
+        <div class="hero-links">${openclawLinks || '<span class="subtle">No links configured.</span>'}</div>
+      </div>
+    </section>
+    ${renderAlertStrip(analytics)}
+  `;
+}
+
+function renderRoleSnapshot(agents, supervisor, projectData) {
   const laneCards = [];
   laneCards.push(renderLaneCard({
     title: 'Supervisor',
@@ -1837,70 +2005,19 @@ function renderSummary(projectData, agents, supervisor, metrics, feedback) {
   }
 
   return `
-    <div class="summary-grid">
-      <section class="card hero-card">
-        <div class="card-body">
-          <div class="hero-title">
-            <div class="eyebrow">Project summary</div>
-            <h2>${esc(projectData.name)}</h2>
-            <p>${esc(projectData.description || 'FleetClaw coordination dashboard for this project.')}</p>
-          </div>
-          <div class="project-status-panel">
-            <div class="project-status-top">
-              ${renderStatusBadge(projectState)}
-              <span class="status-badge ${projectSupervisorCron === 'disabled' ? 'status-done' : (projectSupervisorCron === 'enabled' ? 'status-monitoring' : 'status-unknown')}">supervisor cron ${esc(projectSupervisorCron)}</span>
-              <span class="subtle">${esc(projectStatus.lastUpdatedDisplay || '-')}</span>
-            </div>
-            <div class="project-status-summary">${esc(projectSummary)}</div>
-            <div class="field-list">
-              <div class="field-row"><span class="field-label">Completed work</span><span class="field-value">${esc(projectCompletedWork)}</span></div>
-              <div class="field-row"><span class="field-label">Next action</span><span class="field-value">${esc(projectNextAction)}</span></div>
-              <div class="field-row"><span class="field-label">Where to review</span><span class="field-value">${projectReviewUrl && projectReviewUrl !== '-' ? `<a href="${esc(projectReviewUrl)}" target="_blank">${esc(projectReviewUrl)}</a>` : '-'}</span></div>
-              <div class="field-row"><span class="field-label">Review command</span><span class="field-value mono">${esc(projectReviewCommand)}</span></div>
-              <div class="field-row"><span class="field-label">Supervisor status</span><span class="field-value">${esc(projectSupervisorReason || 'Progress cron state is warming up.')}</span></div>
-            </div>
-          </div>
-          <div class="hero-links">${openclawLinks || '<span class="subtle">No links configured.</span>'}</div>
-          <div class="hero-review">
-            <div class="field-row"><span class="field-label">Primary review URL</span><span class="field-value">${projectData.review?.url ? `<a href="${esc(projectData.review.url)}" target="_blank">${esc(projectData.review.url)}</a>` : '-'}</span></div>
-            <div class="field-row"><span class="field-label">Primary review command</span><span class="field-value mono">${esc(projectData.review?.command || '-')}</span></div>
-            <div class="field-row"><span class="field-label">Design review command</span><span class="field-value mono">${esc(projectData.review?.designCommand || '-')}</span></div>
-            <div class="field-row"><span class="field-label">Notes</span><span class="field-value">${esc(projectData.review?.notes || '-')}</span></div>
-          </div>
-        </div>
-      </section>
-      <section class="card summary-card">
-        <div class="card-header"><h2>Quick Read</h2></div>
-        <div class="card-body">
-          <div class="stat-grid">
-            ${renderQuickStat('Active lanes', fmtInt(overview.activeAgents), `${fmtInt(overview.blockedAgents)} blocked`)}
-            ${renderQuickStat('Accepted today', fmtInt(overview.acceptedTasksToday), 'Unique ACCEPT_DONE decisions')}
-            ${renderQuickStat('Pending review', fmtInt(overview.pendingReviews), `${fmtInt(overview.diffAwaitingReviewFiles)} files awaiting review`)}
-            ${renderQuickStat('Avg context', fmtPct(overview.avgRoleContextPct ?? overview.avgContextPct), `Main avg ${fmtPct(overview.avgMainContextPct)} · Max main ${fmtPct(overview.maxMainContextPct ?? overview.maxContextPct)}`)}
-            ${renderQuickStat('Project hourly tokens', formatRate(overview.projectHourlyTokens), `Elapsed ${formatElapsedHours(overview.projectElapsedHours)}`)}
-            ${renderQuickStat('Supervisor share', fmtPct(overview.supervisorTokensPct), 'Main-session token share')}
-            ${renderQuickStat('Project tokens', fmtInt(overview.projectTokensCurrent), overview.projectTokensToday === null || overview.projectTokensToday === undefined ? 'Current live-session footprint' : `Today +${fmtInt(overview.projectTokensToday)}`)}
-            ${renderQuickStat('Work files', fmtInt(overview.workProductFiles), 'Modified or untracked work-product files')}
-          </div>
-          <div class="subtle">Profile ${esc(projectData.profile)} · OpenClaw ${esc(projectData.gateway.port || '-')} · Dashboard ${esc(projectData.dashboard.port)} · Project tokens are sampled from live session totals rather than billing logs.</div>
-        </div>
-      </section>
+    <div class="section-header">
+      <h2>Role Snapshot</h2>
+      <p class="section-subtitle">Compact overview of all fleet lanes</p>
     </div>
-    ${renderAlertStrip(analytics)}
-    ${renderMetricSections(analytics)}
-    ${renderRuntimeSettingsForm({
-      ...projectData,
-      agents,
-    })}
-    ${renderFeedbackForm(projectData, feedback)}
     <section class="card">
-      <div class="card-header"><h2>Role snapshot</h2></div>
       <div class="card-body">
         <div class="lane-grid">${laneCards.join('')}</div>
       </div>
     </section>
   `;
 }
+
+/* ── Wiring ──────────────────────────────────────── */
 
 function wireTabs() {
   document.querySelectorAll('[data-tabs]').forEach((tabBar) => {
@@ -1915,6 +2032,33 @@ function wireTabs() {
         });
       });
     });
+  });
+}
+
+function wireConfigTabs() {
+  const tabBar = document.querySelector('[data-config-tabs]');
+  if (!tabBar) return;
+  tabBar.querySelectorAll('.config-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const pane = tab.dataset.configPane;
+      tabBar.querySelectorAll('.config-tab').forEach((b) => b.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('[data-config-content]').forEach((content) => {
+        content.classList.toggle('active', content.dataset.configContent === pane);
+      });
+    });
+  });
+}
+
+function wireMetricToggle() {
+  const btn = document.querySelector('[data-metric-toggle]');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    showAllMetrics = !showAllMetrics;
+    document.querySelectorAll('[data-extra-metric]').forEach((card) => {
+      card.classList.toggle('show-all', showAllMetrics);
+    });
+    btn.textContent = showAllMetrics ? 'Show fewer metrics' : 'Show all metrics';
   });
 }
 
@@ -1998,27 +2142,35 @@ function wireRuntimeSettingsForm(projectData) {
   if (!form) return;
 
   const supervisorModelInput = form.querySelector('[name="supervisorModel"]');
-  const checkIntervalInput = form.querySelector('[name="checkIntervalMins"]');
   const supervisorThinkingInput = form.querySelector('[name="supervisorThinking"]');
+  const checkIntervalInput = form.querySelector('[name="checkIntervalMins"]');
   const restartGatewayInput = form.querySelector('[name="restartGateway"]');
-  const agentInputs = Array.from(form.querySelectorAll('[data-agent-model-input]'));
+  const agentModelInputs = Array.from(form.querySelectorAll('[data-agent-model-input]'));
   const agentThinkingInputs = Array.from(form.querySelectorAll('[data-agent-thinking-input]'));
 
   const syncDraft = () => {
+    const agentMap = {};
+    agentModelInputs.forEach((input) => {
+      const id = input.dataset.agentId || '';
+      if (!agentMap[id]) agentMap[id] = { id, model: '', thinking: '' };
+      agentMap[id].model = input.value || '';
+    });
+    agentThinkingInputs.forEach((input) => {
+      const id = input.dataset.agentId || '';
+      if (!agentMap[id]) agentMap[id] = { id, model: '', thinking: '' };
+      agentMap[id].thinking = input.value || '';
+    });
+
     runtimeSettingsDraft = {
       supervisorModel: supervisorModelInput?.value || '',
-      checkIntervalMins: checkIntervalInput?.value || '',
       supervisorThinking: supervisorThinkingInput?.value || '',
+      checkIntervalMins: checkIntervalInput?.value || '',
       restartGateway: Boolean(restartGatewayInput?.checked),
-      agents: agentInputs.map((input) => ({
-        id: input.dataset.agentId || '',
-        model: input.value || '',
-        thinking: (agentThinkingInputs.find((thinkingInput) => thinkingInput.dataset.agentId === input.dataset.agentId)?.value || '').trim(),
-      })),
+      agents: Object.values(agentMap),
     };
   };
 
-  [supervisorModelInput, checkIntervalInput, supervisorThinkingInput, restartGatewayInput, ...agentInputs, ...agentThinkingInputs].forEach((input) => {
+  [supervisorModelInput, supervisorThinkingInput, checkIntervalInput, restartGatewayInput, ...agentModelInputs, ...agentThinkingInputs].forEach((input) => {
     if (!input) return;
     input.addEventListener('input', syncDraft);
     input.addEventListener('change', syncDraft);
@@ -2049,15 +2201,15 @@ function wireRuntimeSettingsForm(projectData) {
       const response = await fetch('/api/runtime-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        supervisor: {
-          model: runtimeSettingsDraft.supervisorModel,
-          checkIntervalMins: runtimeSettingsDraft.checkIntervalMins,
-          thinking: runtimeSettingsDraft.supervisorThinking,
-        },
-        agents: runtimeSettingsDraft.agents,
-        restartGateway: runtimeSettingsDraft.restartGateway,
-      }),
+        body: JSON.stringify({
+          supervisor: {
+            model: runtimeSettingsDraft.supervisorModel,
+            thinking: runtimeSettingsDraft.supervisorThinking,
+            checkIntervalMins: runtimeSettingsDraft.checkIntervalMins,
+          },
+          agents: runtimeSettingsDraft.agents,
+          restartGateway: runtimeSettingsDraft.restartGateway,
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -2069,10 +2221,7 @@ function wireRuntimeSettingsForm(projectData) {
         kind: 'ok',
         text: payload.note || 'Settings applied.',
       };
-      runtimeSettingsDraft = buildRuntimeSettingsDraft({
-        ...projectData,
-        runtimeSettings: payload.runtimeSettings,
-      });
+      runtimeSettingsDraft = null;
       await fetchAll();
     } catch (error) {
       runtimeSettingsSubmitting = false;
@@ -2114,17 +2263,41 @@ function render() {
 
   document.getElementById('project-name').textContent = projectData.name;
   document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
-  document.getElementById('header-subtitle').textContent = `${agents.length} coding agents · supervisor checks every ${projectData.supervisor.checkInterval} minutes`;
+  document.getElementById('header-subtitle').textContent = `${agents.length} agents · checks every ${projectData.supervisor.checkInterval}m`;
   document.title = `FleetClaw - ${projectData.name}`;
 
-  document.getElementById('summary').innerHTML = renderSummary(projectData, agents, supervisor, metrics, feedback);
-  document.getElementById('role-sections').innerHTML = [
-    renderSupervisorSection(supervisor, projectData, feedback),
-    ...agents.map(renderAgentSection),
-  ].join('');
-  document.getElementById('support').innerHTML = renderSupport(projectData, metrics, controlPlane);
+  // Section 2: Fleet Overview
+  document.getElementById('fleet-overview').innerHTML = renderSummary(projectData, agents, supervisor, metrics);
+
+  // Section 3: Health Metrics
+  const analytics = metrics.analytics || {};
+  document.getElementById('health-metrics').innerHTML = `
+    <div class="section-header">
+      <h2>Health Metrics</h2>
+      <p class="section-subtitle">Operational indicators and fleet health</p>
+    </div>
+    ${renderMetricSections(analytics)}
+  `;
+
+  // Section 4: Fleet Lanes
+  document.getElementById('fleet-lanes').innerHTML = `
+    <div class="section-header">
+      <h2>Fleet Lanes</h2>
+      <p class="section-subtitle">Supervisor and agent detail cards</p>
+    </div>
+    ${renderSupervisorSection(supervisor, projectData, feedback)}
+    ${agents.map(renderAgentSection).join('')}
+  `;
+
+  // Section 5: Configuration & Support
+  document.getElementById('config-support').innerHTML = renderSupport(projectData, metrics, controlPlane);
+
+  // Section 6: Role Snapshot
+  document.getElementById('role-snapshot').innerHTML = renderRoleSnapshot(agents, supervisor, projectData);
 
   wireTabs();
+  wireConfigTabs();
+  wireMetricToggle();
   wireFeedbackForm(projectData);
   wireRuntimeSettingsForm({
     ...projectData,
@@ -2135,9 +2308,11 @@ function render() {
 function refresh() {
   fetchAll().catch((error) => {
     console.error(error);
-    document.getElementById('summary').innerHTML = '';
-    document.getElementById('role-sections').innerHTML = `<section class="card"><div class="card-body"><pre>${esc(error.message)}</pre></div></section>`;
-    document.getElementById('support').innerHTML = '';
+    document.getElementById('fleet-overview').innerHTML = '';
+    document.getElementById('health-metrics').innerHTML = '';
+    document.getElementById('fleet-lanes').innerHTML = `<section class="card"><div class="card-body"><pre>${esc(error.message)}</pre></div></section>`;
+    document.getElementById('config-support').innerHTML = '';
+    document.getElementById('role-snapshot').innerHTML = '';
   });
 }
 
