@@ -1152,8 +1152,16 @@ function lastMeaningfulLine(text) {
 
 function renderDecisionSummary(decision) {
   if (!decision) return 'No recorded supervisor instruction yet.';
-  const detail = firstMeaningfulLine(decision.text);
-  return `${esc(decision.decision)}${detail ? ` · ${esc(detail.replace(/^-+\s*/, ''))}` : ''}`;
+  const nextMatch = decision.text.match(/NEXT:\s*(.+)/);
+  const reasonMatch = decision.text.match(/REASON:\s*(.+)/);
+  const next = nextMatch ? nextMatch[1].trim() : '';
+  const reason = reasonMatch ? reasonMatch[1].trim() : '';
+  const sentAt = decision.sentAt ? new Date(decision.sentAt).toLocaleString() : '';
+  let parts = [`<strong>${esc(decision.decision)}</strong>`];
+  if (next) parts.push(esc(next));
+  if (reason) parts.push(`<em>${esc(reason)}</em>`);
+  if (sentAt) parts.push(`<span style="opacity:0.6;font-size:0.8rem;">${esc(sentAt)}</span>`);
+  return parts.join(' · ');
 }
 
 function severityClass(severity) {
