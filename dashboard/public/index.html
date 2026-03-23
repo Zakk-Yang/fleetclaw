@@ -1992,16 +1992,21 @@ function renderRoleSnapshot(agents, supervisor, projectData) {
   const laneCards = [];
   const supModel = projectData?.supervisor?.model || 'unknown';
   const supInterval = projectData?.supervisor?.checkInterval || '?';
+  const ps = projectData?.status?.fields || {};
+  const supState = ps.state || 'monitoring';
+  const supSummary = ps.summary || lastMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.';
+  const supLastUpdated = ps['last updated'] || (supervisor.mainSession ? 'active' : '');
+  const supNextAction = ps['next action'] || 'Reviews checkpoints, inspects git state, and routes the next decision.';
   laneCards.push(renderLaneCard({
     title: 'Supervisor',
     model: supModel,
     focusDirs: `every ${supInterval}m`,
-    lastUpdated: supervisor.mainSession ? 'active' : '',
-    state: 'monitoring',
-    summary: lastMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.',
+    lastUpdated: supLastUpdated,
+    state: supState,
+    summary: supSummary,
     context: renderSessionSummary(supervisor.mainSession),
     sessionUrl: supervisor.sessionUrl || null,
-    nextStep: 'Reviews checkpoints, inspects git state, and routes the next decision.',
+    nextStep: supNextAction,
   }));
 
   for (const agent of agents) {
