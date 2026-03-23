@@ -961,7 +961,42 @@ CONFIGEOF
     log "Generated openclaw config at generated/openclaw-config.json5"
 
     mkdir -p "${PROFILE_ROOT}"
+
+    # Preserve existing models.providers settings (e.g. Ollama apiKey/baseUrl)
+    EXISTING_MODELS_PROVIDERS=""
+    if [[ -f "${PROFILE_CONFIG_PATH}" ]]; then
+        EXISTING_MODELS_PROVIDERS="$(python3 -c "
+import json, sys
+try:
+    with open('${PROFILE_CONFIG_PATH}') as f:
+        data = json.load(f)
+    providers = data.get('models', {}).get('providers', {})
+    if providers:
+        print(json.dumps(providers))
+except:
+    pass
+" 2>/dev/null || true)"
+    fi
+
     cp "${CONFIG_PATCH}" "${PROFILE_CONFIG_PATH}"
+
+    # Re-apply preserved models.providers settings
+    if [[ -n "${EXISTING_MODELS_PROVIDERS}" ]]; then
+        python3 -c "
+import json, sys, re
+config_path = '${PROFILE_CONFIG_PATH}'
+providers = json.loads('${EXISTING_MODELS_PROVIDERS}')
+with open(config_path) as f:
+    raw = f.read()
+# Remove JSON5 comments for parsing
+cleaned = re.sub(r'//.*$', '', raw, flags=re.MULTILINE)
+data = json.loads(cleaned)
+data.setdefault('models', {})['providers'] = providers
+with open(config_path, 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null || true
+    fi
+
     log "Wrote dedicated profile config at ${PROFILE_CONFIG_PATH}"
     openclaw --profile "${PROJECT_PROFILE}" config validate >/dev/null
     log "Validated dedicated profile config"
