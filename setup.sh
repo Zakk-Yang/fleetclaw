@@ -963,37 +963,31 @@ CONFIGEOF
     mkdir -p "${PROFILE_ROOT}"
 
     # Preserve existing models.providers settings (e.g. Ollama apiKey/baseUrl)
-    EXISTING_MODELS_PROVIDERS=""
+    # Use openclaw config get to read (handles JSON5), save as flat key=value pairs
+    PRESERVED_PROVIDER_SETTINGS=""
     if [[ -f "${PROFILE_CONFIG_PATH}" ]]; then
-        EXISTING_MODELS_PROVIDERS="$(python3 -c "
-import json, sys
-try:
-    with open('${PROFILE_CONFIG_PATH}') as f:
-        data = json.load(f)
-    providers = data.get('models', {}).get('providers', {})
-    if providers:
-        print(json.dumps(providers))
-except:
-    pass
-" 2>/dev/null || true)"
+        PRESERVED_PROVIDER_SETTINGS="$(openclaw --profile "${PROJECT_PROFILE}" config get models.providers 2>/dev/null || true)"
     fi
 
     cp "${CONFIG_PATCH}" "${PROFILE_CONFIG_PATH}"
 
-    # Re-apply preserved models.providers settings
-    if [[ -n "${EXISTING_MODELS_PROVIDERS}" ]]; then
+    # Re-apply preserved models.providers settings via openclaw config set
+    if [[ -n "${PRESERVED_PROVIDER_SETTINGS}" && "${PRESERVED_PROVIDER_SETTINGS}" != "undefined" && "${PRESERVED_PROVIDER_SETTINGS}" != "null" ]]; then
         python3 -c "
-import json, sys, re
-config_path = '${PROFILE_CONFIG_PATH}'
-providers = json.loads('${EXISTING_MODELS_PROVIDERS}')
-with open(config_path) as f:
-    raw = f.read()
-# Remove JSON5 comments for parsing
-cleaned = re.sub(r'//.*$', '', raw, flags=re.MULTILINE)
-data = json.loads(cleaned)
-data.setdefault('models', {})['providers'] = providers
-with open(config_path, 'w') as f:
-    json.dump(data, f, indent=2)
+import json, subprocess, sys
+try:
+    providers = json.loads('''${PRESERVED_PROVIDER_SETTINGS}''')
+    if isinstance(providers, dict):
+        for name, settings in providers.items():
+            if isinstance(settings, dict):
+                for key, value in settings.items():
+                    config_key = f'models.providers.{name}.{key}'
+                    subprocess.run(
+                        ['openclaw', '--profile', '${PROJECT_PROFILE}', 'config', 'set', config_key, str(value)],
+                        capture_output=True, timeout=10
+                    )
+except:
+    pass
 " 2>/dev/null || true
     fi
 
