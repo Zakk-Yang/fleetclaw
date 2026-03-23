@@ -305,7 +305,7 @@ for i in $(seq 0 $((AGENT_COUNT - 1))); do
     if [[ -n "${AGENT_THINKING}" && "${AGENT_THINKING}" != "null" ]]; then
         SEED_ARGS+=(--thinking "${AGENT_THINKING}")
     fi
-    SEED_ARGS+=(--message "Start working on your task. Read .fleetclaw/agents/${AGENT_ID}/SOUL.md, .fleetclaw/agents/${AGENT_ID}/BRIEF.md, and .fleetclaw/agents/${AGENT_ID}/STATUS.md first. Work directly in your focus directories.")
+    SEED_ARGS+=(--message "You are an autonomous coding agent. Execute your full task NOW without waiting for further input. Steps: 1) Read .fleetclaw/agents/${AGENT_ID}/SOUL.md to understand your role. 2) Read .fleetclaw/agents/${AGENT_ID}/BRIEF.md for your task. 3) Execute the task described in BRIEF.md — create files, write code, and commit with git. 4) After each file you write, run 'git add <file> && git commit -m \"[${AGENT_ID}] <description>\"'. 5) Update .fleetclaw/agents/${AGENT_ID}/STATUS.md when done. Do NOT stop to ask questions. Do NOT just acknowledge — execute the full task autonomously right now.")
 
     info "Seeding session for ${AGENT_ID}..."
     nohup "${SEED_ARGS[@]}" >/dev/null 2>&1 &
@@ -318,7 +318,7 @@ SUPERVISOR_SEED_ARGS=("${OPENCLAW_CMD[@]}" agent --agent "${SUPERVISOR_RUNTIME_I
 if [[ -n "${SUPERVISOR_THINKING}" && "${SUPERVISOR_THINKING}" != "null" ]]; then
     SUPERVISOR_SEED_ARGS+=(--thinking "${SUPERVISOR_THINKING}")
 fi
-SUPERVISOR_SEED_ARGS+=(--message "Start your supervisor loop. Read SOUL.md and ROSTER.md first. Check all coding agents.")
+SUPERVISOR_SEED_ARGS+=(--message "You are an autonomous supervisor agent. Execute your coordination loop NOW without waiting for further input. Steps: 1) Read SOUL.md for your role and decision protocol. 2) Read ROSTER.md for the agent list. 3) Check each agent's .fleetclaw/agents/<id>/STATUS.md and recent git log. 4) Send decisions (CONTINUE/REDIRECT/ACCEPT_DONE) to agents that need them using .fleetclaw/bin/send-supervisor-decision.sh. 5) Update .fleetclaw/PROJECT_STATUS.md with current fleet state. Do NOT stop to ask questions — execute your full supervisor check cycle now.")
 
 info "Seeding supervisor session..."
 nohup "${SUPERVISOR_SEED_ARGS[@]}" >/dev/null 2>&1 &
