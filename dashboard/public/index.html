@@ -1361,21 +1361,26 @@ function renderLaneCard(role) {
   const sessionLink = role.sessionUrl
     ? `<a href="${esc(role.sessionUrl)}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:0.82rem;">Open in OpenClaw &rarr;</a>`
     : '';
+  const metaItems = [role.model, role.focusDirs, role.lastUpdated].filter(Boolean);
+  const nextStepHtml = role.nextStep
+    ? `<div class="lane-card__decision"><strong>Next step</strong><div class="lane-card__meta">${esc(role.nextStep)}</div></div>`
+    : '';
+  const supervisorHtml = role.supervisorInstruction
+    ? `<div class="lane-card__decision"><strong>Latest supervisor instruction</strong><div class="lane-card__meta">${role.supervisorInstruction}</div></div>`
+    : '';
   return `
     <article class="lane-card">
       <div class="lane-card__top">
         <div>
           <h3>${esc(role.title)} ${sessionLink}</h3>
-          <div class="lane-card__meta">${esc(role.meta)}</div>
+          <div class="lane-card__meta">${esc(metaItems.join(' · '))}</div>
         </div>
         ${renderStatusBadge(role.state)}
       </div>
       <div class="lane-card__summary">${esc(role.summary)}</div>
       <div class="lane-card__meta">Context: ${esc(role.context)}</div>
-      <div class="lane-card__decision">
-        <strong>${esc(role.decisionTitle)}</strong>
-        <div class="lane-card__meta">${role.decisionBody}</div>
-      </div>
+      ${nextStepHtml}
+      ${supervisorHtml}
     </article>
   `;
 }
@@ -1985,27 +1990,33 @@ function renderSummary(projectData, agents, supervisor, metrics) {
 
 function renderRoleSnapshot(agents, supervisor, projectData) {
   const laneCards = [];
+  const supModel = projectData?.supervisor?.model || 'unknown';
+  const supInterval = projectData?.supervisor?.checkInterval || '?';
   laneCards.push(renderLaneCard({
     title: 'Supervisor',
-    meta: `${projectData.supervisor.model} · every ${projectData.supervisor.checkInterval}m`,
+    model: supModel,
+    focusDirs: `every ${supInterval}m`,
+    lastUpdated: supervisor.mainSession ? 'active' : '',
     state: 'monitoring',
     summary: lastMeaningfulLine(supervisor.latestMemory || 'Supervisor is monitoring the fleet.') || 'Supervisor is monitoring the fleet.',
     context: renderSessionSummary(supervisor.mainSession),
     sessionUrl: supervisor.sessionUrl || null,
-    decisionTitle: 'Role',
-    decisionBody: 'Reviews checkpoints, inspects git state, and routes the next decision.',
+    nextStep: 'Reviews checkpoints, inspects git state, and routes the next decision.',
   }));
 
   for (const agent of agents) {
+    const sf = agent.statusFields || {};
     laneCards.push(renderLaneCard({
       title: agent.id,
-      meta: `${agent.focusDirs.join(', ') || 'shared workspace'} · ${agent.lastUpdatedDisplay || 'no checkpoint'}`,
-      state: agent.statusFields.state || 'unknown',
-      summary: agent.statusFields.summary || 'No summary yet.',
+      model: agent.model || 'unknown',
+      focusDirs: agent.focusDirs.join(', ') || 'shared workspace',
+      lastUpdated: sf['last updated'] || agent.lastUpdatedDisplay || 'no checkpoint',
+      state: sf.state || 'unknown',
+      summary: sf.summary || 'No summary yet.',
       context: renderSessionSummary(agent.mainSession),
       sessionUrl: agent.sessionUrl || null,
-      decisionTitle: 'Latest supervisor instruction',
-      decisionBody: renderDecisionSummary(agent.latestSupervisorDecision),
+      nextStep: sf['next step'] && sf['next step'] !== 'none' ? sf['next step'] : null,
+      supervisorInstruction: renderDecisionSummary(agent.latestSupervisorDecision),
     }));
   }
 
