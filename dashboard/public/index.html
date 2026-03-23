@@ -2264,6 +2264,8 @@ function wireRuntimeSettingsForm(projectData) {
 }
 
 function isDashboardFormActive() {
+  // Block refresh if user has typed any feedback message (even if focus is elsewhere)
+  if (feedbackDraft.message && feedbackDraft.message.trim().length > 0) return true;
   const active = document.activeElement;
   return Boolean(
     active
