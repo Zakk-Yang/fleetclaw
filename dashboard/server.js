@@ -1150,7 +1150,8 @@ function runRuntimeRefresh(profile, { restartGateway = false } = {}) {
     timeout: 30000,
   });
 
-  if (restartGateway) {
+  // Always restart gateway after setup to pick up new config (token + model changes)
+  {
     execFileSync('openclaw', ['--profile', profile, 'gateway', 'restart'], {
       cwd: SCRIPT_DIR,
       encoding: 'utf8',
